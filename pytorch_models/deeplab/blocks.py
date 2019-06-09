@@ -81,7 +81,8 @@ class ASPP(nn.Module):
     def forward(self, x):
         stack=[l(x) for l in self.aconv_list]
         if self.pooling:
-            stack.append(self.pooling(x)*torch.ones(stack[0].shape))
+            ones=torch.ones(stack[0].shape).to(x.device)
+            stack.append(self.pooling(x)*ones)
         x=torch.cat(stack,dim=1)
         x=self.out_conv(x)
         if self.act:
