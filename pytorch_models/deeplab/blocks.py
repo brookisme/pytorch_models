@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from pytorch_models.helpers import activation,same_padding
 
 
@@ -40,7 +41,7 @@ class ASPP(nn.Module):
     RELU='ReLU'
     AVERAGE='avg'
     MAX='max'
-
+    UPMODE='bilinear'
 
 
     #
@@ -81,8 +82,12 @@ class ASPP(nn.Module):
     def forward(self, x):
         stack=[l(x) for l in self.aconv_list]
         if self.pooling:
-            ones=torch.ones(stack[0].shape).to(x.device)
-            stack.append(self.pooling(x)*ones)
+            x=F.interpolate(
+                self.pooling(x), 
+                size=stack[0].size()[2:], 
+                mode=ASPP.UPMODE, 
+                align_corners=True)
+            stack.append(x)
         x=torch.cat(stack,dim=1)
         x=self.out_conv(x)
         if self.act:

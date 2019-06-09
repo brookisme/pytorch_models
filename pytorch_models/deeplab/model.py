@@ -20,6 +20,7 @@ class DeeplabV3plus(nn.Module):
 
     """
     XCEPTION='xception'
+    UPMODE='bilinear'
 
 
     def __init__(self,
@@ -43,18 +44,16 @@ class DeeplabV3plus(nn.Module):
             in_channels=aspp_out_ch+backbone_low_level_out_ch,
             out_channels=out_ch,
             kernel_size=1)
-        self.up1=nn.Upsample(scale_factor=4,mode=upsample_mode,align_corners=False)
-        self.up2=nn.Upsample(scale_factor=4,mode=upsample_mode,align_corners=False)
 
 
     def forward(self,x):
         x,lowx=self.backbone(x)
         # lowx: BN RELU? - BN RELU AFTER ALL XCEPTION?
         x=self.aspp(x)
-        x=self.up1(x)
+        x=self._up(x)
         x=torch.cat([x,lowx],dim=1)
         x=self.channel_reducer(x)
-        x=self.up2(x)
+        x=self._up(x)
         return x
 
 
@@ -67,6 +66,13 @@ class DeeplabV3plus(nn.Module):
         else:
             raise NotImplementedError("Currently only supports 'xception' backbone")
 
+
+    def _up(self,x,scale_factor=4):
+        return F.interpolate(
+                x, 
+                scale_factor=scale_factor, 
+                mode=DeeplabV3plus.UPMODE, 
+                align_corners=True)
 
 
 
