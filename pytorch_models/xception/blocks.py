@@ -167,7 +167,7 @@ class SeparableStack(nn.Module):
         if self.res:
             if self.ident_conv:
                 x=self.ident_conv(x)
-            return x.add_(xout)
+            return x.add(xout)
         else:
             return xout
 
@@ -344,7 +344,7 @@ class XBlock(nn.Module):
         if self.sconv_blocks_depth:
             x=self.sconv_blocks(x)
         x=self.reduction_layer(x)
-        return xpc.add_(x)
+        return xpc.add(x)
 
 
     def _reduction_layer(self,ch,maxpool,stride,dilation):
