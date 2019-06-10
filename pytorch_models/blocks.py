@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import activation, same_padding
+from pytorch_models.helpers import parse_dropout, activation, same_padding
 #
 # CONSTANTS
 #
@@ -44,6 +44,7 @@ class Conv(nn.Module):
             - int or 'same' 
         batch_norm<bool>: add batch norm after each conv
         dropout<bool|float>:
+            - after forward pass
             - if truthy dropout applied after each conv
             - if float dropout rate = dropout
             - else dropout rate=0.5
@@ -93,13 +94,13 @@ class Conv(nn.Module):
             stride,
             dilation,
             batch_norm,
-            dropout,
             act,
             act_config)
+        self.dropout, self.include_dropout=parse_dropout(dropout)
 
         
     def forward(self, x):
-        return self.conv_blocks(x)
+        return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
     #
@@ -113,7 +114,6 @@ class Conv(nn.Module):
             stride,
             dilation,
             batch_norm,
-            dropout,
             act,
             act_config):
         layers=[]
@@ -131,8 +131,6 @@ class Conv(nn.Module):
                 layers.append(nn.BatchNorm2d(ch))
             if act:
                 layers.append(activation(act=act,**act_config))
-            if dropout:
-                layers.append(nn.Dropout2d(p=dropout))
             in_ch=ch
         return nn.Sequential(*layers)
 
@@ -168,6 +166,7 @@ class Dense(nn.Module):
             - only valid if out_chs is None
         batch_norm<bool>: add batch norm after each dense/linear layer 
         dropout<bool|float>:
+            - after forward pass
             - if truthy dropout applied after each dense/linear layer 
             - if float dropout rate = dropout
             - else dropout rate=0.5
@@ -201,13 +200,14 @@ class Dense(nn.Module):
             self.in_ch,
             out_chs,
             batch_norm,
-            dropout,
             act,
             act_config)
+        self.dropout, self.include_dropout=parse_dropout(dropout)
 
         
     def forward(self, x):
-        return self.dense_blocks(x)
+        x=self.dense_blocks(x)
+        return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
     #
@@ -218,7 +218,6 @@ class Dense(nn.Module):
             in_ch,
             out_chs,
             batch_norm,
-            dropout,
             act,
             act_config):
         layers=[]
@@ -232,8 +231,6 @@ class Dense(nn.Module):
                 layers.append(nn.BatchNorm1d(ch))
             if act:
                 layers.append(activation(act=act,**act_config))
-            if dropout:
-                layers.append(nn.Dropout2d(p=dropout))
             in_ch=ch
         return nn.Sequential(*layers)
 

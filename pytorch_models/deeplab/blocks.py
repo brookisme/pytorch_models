@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_models.blocks as blocks
-from pytorch_models.helpers import same_padding
+from pytorch_models.helpers import parse_dropout, same_padding
 #
 # CONSTANTS
 #
@@ -37,7 +37,7 @@ class ASPP(nn.Module):
         batch_norm<bool>: include batch_norm after each conv/pooling
         relu<bool>: include relu after each conv/pooling
         dropout<float|bool>:
-            - after each aconv
+            - after forward pass
             - for out_conv if out_conv_config.get('dropout') is None
             - True: rate=0.5
             - otherwise: rate=dropout
@@ -94,6 +94,7 @@ class ASPP(nn.Module):
         self.pooling=self._pooling(pooling)
         self.aconv_list=self._aconv_list(kernel_sizes,dilations)
         self.out_conv=self._out_conv(out_kernel_size,out_conv_config)
+        self.dropout, self.include_dropout=parse_dropout(dropout)
 
 
     def forward(self, x):
@@ -104,7 +105,7 @@ class ASPP(nn.Module):
         x=torch.cat(stack,dim=1)
         if self.out_conv:
             x=self.out_conv(x)
-        return x
+        return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
     def _aconv_list(self,kernels,dilations):
@@ -125,8 +126,6 @@ class ASPP(nn.Module):
             layers.append(nn.BatchNorm2d(self.out_ch))
         if self.relu:
             layers.append(nn.ReLU())
-        if self.dropout:
-            layers.append(nn.Dropout2d(p=dropout))
         return nn.Sequential(*layers)
 
 
@@ -156,6 +155,7 @@ class ASPP(nn.Module):
         return pooling
 
 
+        
     def _out_conv(self,kernel_size,config):
         if config is not False:
             if config.get('dropout') is None:

@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import activation, same_padding
+from pytorch_models.helpers import parse_dropout, activation, same_padding
 
 
 #
 # CONSTANTS
 #
-DEFAULT_DROPOUT_RATE=0.5
 CROP_TODO="TODO: Need to crop 1x1 Conv to implement non-same padding"
 
 
@@ -92,7 +91,7 @@ class SeparableConv2d(nn.Module):
             bias=True )
         self.batch_norm=self._batch_norm(out_ch,batch_norm)
         self.act=activation(act,**act_config)
-        self.dropout, self.include_dropout=self._dropout(dropout)
+        self.dropout, self.include_dropout=parse_dropout(dropout)
 
 
     def forward(self, x):
@@ -119,18 +118,6 @@ class SeparableConv2d(nn.Module):
             batch_norm=False
         return batch_norm
 
-
-    def _dropout(self,dropout):
-        if dropout:
-            if dropout is True:
-                dropout=DEFAULT_DROPOUT_RATE
-            else:
-                dropout=dropout
-            include_dropout=True
-        else:
-            dropout=False
-            include_dropout=False 
-        return dropout, include_dropout
 
 
 
@@ -358,7 +345,7 @@ class XBlock(nn.Module):
             stride=out_stride,
             kernel_size=1)
         self.pointwise_bn=nn.BatchNorm2d(out_ch)
-        self.dropout, self.include_dropout=self._dropout(dropout)
+        self.dropout, self.include_dropout=parse_dropout(dropout)
 
 
     def forward(self,x):
@@ -393,18 +380,6 @@ class XBlock(nn.Module):
                 stride=stride,
                 dilation=dilation)
 
-
-    def _dropout(self,dropout):
-        if dropout:
-            if dropout is True:
-                dropout=DEFAULT_DROPOUT_RATE
-            else:
-                dropout=dropout
-            include_dropout=True
-        else:
-            dropout=False
-            include_dropout=False 
-        return dropout, include_dropout
 
 
 
