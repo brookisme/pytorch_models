@@ -37,24 +37,43 @@ def get(classifier):
 class GAPClassifier(nn.Module):
     """ GlobalAveragePooling Classification Block
 
-    1. ConvBlocks
-    2. GAP
-    3. DenseBlocks
-    4. Activation
+    Classification Block built from:
+        1. ConvBlocks
+        2. Adaptive(Avg|Max)Pooling
+        3. DenseBlocks
+        4. OutputActivation
+    
+    The default behavior is to have a single ConvBlock bringing the number
+    of features to nb_classes, and one DenseBlock that maintains the number 
+    of features. 
+
+    * More layers can by changing nb_convs/nb_dense
+    * The number of features can be changed more gradually by using conv_chs/dense_chs 
     
     Args:
-        in_ch,
-        nb_classes,
-        nb_convs=1,
-        conv_out_ch=None,
-        conv_chs=None,
-        conv_config={},
-        pooling=AVERAGE,
-        nb_dense=1,
-        dense_chs=None,
-        dense_config={},
-        act=None,
-        act_config={}
+        in_ch<int>: in_channels
+        nb_classes<int>: number of classes
+        nb_convs<int>: 
+            - number of conv layers
+            - ignored if conv_chs is passed
+        conv_out_ch<int|None>: 
+            - channels after conv blocks
+            - if None conv_out_ch=nb_classes
+            - ignored if conv_chs is passed
+        conv_chs<list[int]|None>:
+            - list of conv out_ch for each conv layer
+            - overrides nb_convs, conv_out_ch
+        conv_config<dict>: kwarg-dict for blocks.Conv
+        pooling<str>: 'avg' or 'max'
+        nb_dense<int>:
+            - number of dense layers
+            - ignored if dense_chs is passed
+        dense_chs<list[int]|None>:
+            - list of dense out_ch for each dense layer
+            - overrides nb_dense
+        dense_config<dict>: kwarg-dict for blocks.Dense
+        act<str|func|False>: output activation function or function name
+        act_config: kwarg dict for activation function after block
     """
     #
     # CONSTANTS

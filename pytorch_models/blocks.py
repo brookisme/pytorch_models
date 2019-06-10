@@ -9,8 +9,13 @@ from pytorch_models.helpers import activation, same_padding
 # BLOCKS
 #
 class Conv(nn.Module):
-    r""" Conv Block
-    
+    r""" Convolutional Stack
+
+    Each conv block is a convolution optionally followed by:
+        1. BatchNorm
+        2. Activation
+        3. Dropout
+
     Args:
         in_ch<int>: Number of channels in input
         out_ch<int|None>: 
@@ -139,7 +144,13 @@ class Conv(nn.Module):
 
 
 class Dense(nn.Module):
-    r""" Dense Block
+    r""" Dense/Linear Stack
+
+    Each dense block is a dense layer optionally followed by:
+        1. BatchNorm
+        2. Activation
+        3. Dropout
+
     Args:
         in_ch<int>: Number of features in input
         out_ch<int|None>: 
