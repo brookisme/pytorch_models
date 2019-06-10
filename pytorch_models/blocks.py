@@ -1,7 +1,10 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_models.helpers import activation, same_padding
-
+#
+# CONSTANTS
+#
+DEFAULT_DROPOUT_RATE=0.5
 
 
 
@@ -191,6 +194,8 @@ class Dense(nn.Module):
             out_ch=int(out_ch)
         if out_chs is None:
             out_chs=[out_ch]*depth
+        if dropout is True:
+            dropout=DEFAULT_DROPOUT_RATE
         self.out_ch=out_chs[-1]
         self.dense_blocks=self._dense_blocks(
             self.in_ch,

@@ -7,7 +7,7 @@ from pytorch_models.helpers import activation, same_padding
 #
 # CONSTANTS
 #
-DEFAULT_DROPOUT=0.5
+DEFAULT_DROPOUT_RATE=0.5
 CROP_TODO="TODO: Need to crop 1x1 Conv to implement non-same padding"
 
 
@@ -29,10 +29,12 @@ class SeparableConv2d(nn.Module):
             - if None bias=(not batch_norm)
         act<str|func>: activation function after block 
         act_config: kwarg dict for activation function after block
+        dropout<float|bool|None>: 
+            - after forward pass
+            - if is True dropout=0.5
         pointwise_in<bool>: 
             - if true perform 1x1 convolution first (inception)
             - otherwise perform the 1x1 convolution last.
-        dropout<bool|float>: include dropout after block
     """ 
     #
     # CONSTANTS
@@ -55,8 +57,8 @@ class SeparableConv2d(nn.Module):
             bias=None,
             act='ReLU',
             act_config={},
-            pointwise_in=True,
-            dropout=False):
+            dropout=False,
+            pointwise_in=True):
         super(SeparableConv2d, self).__init__()
         if not bias:
             bias=(not batch_norm)
@@ -88,19 +90,9 @@ class SeparableConv2d(nn.Module):
             stride=1,
             padding=0,
             bias=True )
-        if batch_norm:
-            self.batch_norm=nn.BatchNorm2d(out_ch)
-        else:
-            self.batch_norm=False
+        self.batch_norm=self._batch_norm(out_ch,batch_norm)
         self.act=activation(act,**act_config)
-        if dropout:
-            if dropout is True:
-                self.dropout_rate=DEFAULT_DROPOUT
-            else:
-                self.dropout_rate=dropout
-            self.dropout=True
-        else:
-            self.dropout=False
+        self.dropout, self.include_dropout=self._dropout(dropout)
 
 
     def forward(self, x):
@@ -114,9 +106,31 @@ class SeparableConv2d(nn.Module):
             x=self.batch_norm(x)
         if self.act:
             x=self.act(x)
-        x=F.dropout(x,p=self.dropout_rate,training=self.dropout)
-        return x
+        return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
+
+    #
+    # INTERNAL
+    #
+    def _batch_norm(self,out_ch,batch_norm):
+        if batch_norm:
+            batch_norm=nn.BatchNorm2d(out_ch)
+        else:
+            batch_norm=False
+        return batch_norm
+
+
+    def _dropout(self,dropout):
+        if dropout:
+            if dropout is True:
+                dropout=DEFAULT_DROPOUT_RATE
+            else:
+                dropout=dropout
+            include_dropout=True
+        else:
+            dropout=False
+            include_dropout=False 
+        return dropout, include_dropout
 
 
 
@@ -134,7 +148,7 @@ class SeparableStack(nn.Module):
         res<bool>:
             - if true add resnet 'ident' to output of SeparableConv2d-Blocks.
             - if in_ch != out_ch perform 1x1 Conv to match channels
-        batch_norm/act/act_config: see SeparableConv2d
+        batch_norm/act/act_config/dropout: see SeparableConv2d
     """
     def __init__(self,
             in_ch,
@@ -146,7 +160,8 @@ class SeparableStack(nn.Module):
             res=False,
             batch_norm=True,
             act='ReLU',
-            act_config={}):
+            act_config={},
+            dropout=False):
         super(SeparableStack, self).__init__()
         if not out_chs:
             if not out_ch:
@@ -159,7 +174,8 @@ class SeparableStack(nn.Module):
             dilation,
             batch_norm,
             act,
-            act_config)
+            act_config,
+            dropout)
         self.res=res
         self.ident_conv=self._ident_conv(in_ch,out_chs)
 
@@ -184,7 +200,8 @@ class SeparableStack(nn.Module):
             dilation,
             batch_norm,
             act,
-            act_config):
+            act_config,
+            dropout):
         blocks=[]
         for ch in out_chs:
             blocks.append(SeparableConv2d(
@@ -194,7 +211,8 @@ class SeparableStack(nn.Module):
                 dilation=dilation,
                 batch_norm=batch_norm,
                 act=act,
-                act_config=act_config))
+                act_config=act_config,
+                dropout=dropout))
             in_ch=ch
         return nn.Sequential(*blocks)
 
@@ -302,6 +320,9 @@ class XBlock(nn.Module):
         maxpool<bool>:
             - if false use SeparableConv2d-stride-(dilation) as the last layer
             - otherwise use MaxPooling as the last layer
+        dropout<float|bool|None>: 
+            - after forward pass
+            - if is True dropout=0.5
     """
     def __init__(self,
             in_ch,
@@ -337,6 +358,7 @@ class XBlock(nn.Module):
             stride=out_stride,
             kernel_size=1)
         self.pointwise_bn=nn.BatchNorm2d(out_ch)
+        self.dropout, self.include_dropout=self._dropout(dropout)
 
 
     def forward(self,x):
@@ -346,9 +368,13 @@ class XBlock(nn.Module):
         if self.sconv_blocks_depth:
             x=self.sconv_blocks(x)
         x=self.reduction_layer(x)
-        return xpc.add(x)
+        x=xpc.add(x)
+        return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
+    #
+    # INTERNAL
+    #
     def _reduction_layer(self,ch,maxpool,stride,dilation):
         if maxpool:
             if stride==1:
@@ -368,6 +394,17 @@ class XBlock(nn.Module):
                 dilation=dilation)
 
 
+    def _dropout(self,dropout):
+        if dropout:
+            if dropout is True:
+                dropout=DEFAULT_DROPOUT_RATE
+            else:
+                dropout=dropout
+            include_dropout=True
+        else:
+            dropout=False
+            include_dropout=False 
+        return dropout, include_dropout
 
 
 

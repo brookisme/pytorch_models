@@ -38,7 +38,7 @@ def activation(act=None,**act_config):
         act=re.sub('rELU','ReLU',act)
         act=re.sub('RELU','ReLU',act)
         act=getattr(nn,act)(**act_config)
-    elif callable(act()):
+    elif act and callable(act()):
         act=act(**act_config)
     return act 
 
@@ -69,7 +69,7 @@ def output_activation(act=None,out_ch=None,**act_config):
             act=nn.Sigmoid()
         else:
             act=nn.Softmax(dim=1)
-    elif callable(act()):
+    elif act and callable(act()):
         act=act(**act_config)
     return act 
 

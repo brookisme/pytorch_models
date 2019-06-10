@@ -27,6 +27,9 @@ class Xception(nn.Module):
         xblock_depth: 3
         nb_classes<int|None>:
             - None for backbone use (no classifier added)
+        dropout<float|bool|None>:
+            - global dropout
+            - if is True dropout=0.5
         classifier<str|nn.Module>: alias, module-name or module for classifier
         classifier_config<dict>: 
             - kwarg-dict for classifier
@@ -47,6 +50,7 @@ class Xception(nn.Module):
             exit_stack_chs=[1536,1536,2048],
             xblock_depth=3,
             nb_classes=None,
+            dropout=False,
             classifier='gap',
             classifier_config={}):
         super(Xception,self).__init__()
@@ -54,6 +58,7 @@ class Xception(nn.Module):
             low_level_stride=int(output_stride//2)
         self.output_stride=output_stride
         self.low_level_stride=low_level_stride
+        self.dropout=dropout
         self._init_stride_state()
         self.entry_block=blocks.EntryBlock(in_ch,entry_ch,entry_out_ch)
         self._increment_stride_state()
@@ -65,17 +70,20 @@ class Xception(nn.Module):
             in_ch=xblock_chs[-1],
             depth=bottleneck_depth,
             res=True,
-            dilation=self.dilation)
+            dilation=self.dilation,
+            dropout=self.dropout)
         self.exit_xblock=blocks.XBlock(
                 in_ch=xblock_chs[-1],
                 out_ch=exit_xblock_ch,
                 depth=xblock_depth,
-                dilation=self.dilation)
+                dilation=self.dilation,
+                dropout=self.dropout)
         self._increment_stride_state()
         self.exit_stack=blocks.SeparableStack(
             in_ch=exit_xblock_ch,
             out_chs=exit_stack_chs,
-            dilation=self.dilation)
+            dilation=self.dilation,
+            dropout=self.dropout)
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=exit_stack_chs[-1]
@@ -117,6 +125,7 @@ class Xception(nn.Module):
                 out_ch=ch,
                 depth=depth,
                 dilation=self.dilation,
+                dropout=self.dropout
             ))
             self._increment_stride_state()
             if self.at_low_level_stride: 
