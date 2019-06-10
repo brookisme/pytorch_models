@@ -316,7 +316,8 @@ class XBlock(nn.Module):
             out_ch=None,
             depth=3,
             dilation=1,
-            maxpool=False):
+            maxpool=False,
+            dropout=False):
         super(XBlock, self).__init__()
         if out_ch is None:
             out_ch=in_ch
