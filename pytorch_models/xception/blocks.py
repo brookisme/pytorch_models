@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from pytorch_models.helpers import activation, same_padding
 
 
@@ -94,8 +95,10 @@ class SeparableConv2d(nn.Module):
         self.act=activation(act,**act_config)
         if dropout:
             if dropout is True:
-                dropout=DEFAULT_DROPOUT
-            self.dropout=nn.Dropout2d(p=dropout,inplace=True)
+                self.dropout_rate=DEFAULT_DROPOUT
+            else:
+                self.dropout_rate=dropout
+            self.dropout=True
         else:
             self.dropout=False
 
@@ -111,8 +114,7 @@ class SeparableConv2d(nn.Module):
             x=self.batch_norm(x)
         if self.act:
             x=self.act(x)
-        if self.dropout:
-            x=self.dropout(x)
+        x=F.dropout(x,p=self.dropout_rate,training=self.dropout)
         return x
 
 
