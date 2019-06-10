@@ -100,6 +100,7 @@ class Conv(nn.Module):
 
         
     def forward(self, x):
+        x=self.conv_blocks(x)
         return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
