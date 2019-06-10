@@ -1,30 +1,26 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import activation,same_padding
-
-
-#
-# CONSTANTS
-#
-DEFAULT_DROPOUT=0.5
-CROP_TODO="TODO: Need to crop 1x1 Conv to implement non-same padding"
-
-
+import pytorch_models.blocks as blocks
+from pytorch_models.helpers import same_padding
 #
 # GENERAL BLOCKS
 #
 class ASPP(nn.Module):
     """ Atrous Spatial Pyramid Pooling
 
-    1. Stack [in_ch=>out_ch]: 
+    1. stack [each with in_ch=>out_ch]: 
         - atrous convs:
             a. atrous conv
-            c. BN-ReLU 
+            b. (optional) BN
+            c. (optional) ReLU 
         - pooling:
             a. adaptive-avg|max-pooling
             b. 1x1 conv (in_ch=>out_ch)
-            c. BN-ReLU
+            c. (optional) BN
+            d. (optional) ReLU 
+    2. concat
+    3. conv block
 
     Args:
         in_ch<int>: number of input channels
@@ -32,7 +28,16 @@ class ASPP(nn.Module):
         kernel_sizes<list[int]>: kernel_size for each conv layer
         dilations<list[int]>: dilation for each conv layer
         pooling<bool>: include image_pooling block
-
+        batch_norm<bool>: include batch_norm after each conv/pooling
+        relu<bool>: include relu after each conv/pooling
+        bias<bool|None>: include bias in convs. if None bias=(not batch_norm)
+        out_conv_config<dict|False>: 
+            - if None skip
+            - kwarg-dict for blocks.Conv
+            - kernel_size set explicitly through 'out_kernel_size'
+        out_kernel_size<int>: 
+            - kernel_size for output conv block
+            - overrides out_conv_config['kernel_size']
     """ 
     #
     # CONSTANTS
@@ -57,11 +62,8 @@ class ASPP(nn.Module):
             batch_norm=True,
             relu=True,
             bias=None,
-            out_kernel_size=1,
-            out_batch_norm=True,
-            act=RELU,
-            act_config={},
-            dropout=False):
+            out_conv_config={},
+            out_kernel_size=1):
         super(ASPP, self).__init__()
         if out_ch is None:
             out_ch=in_ch
@@ -75,8 +77,7 @@ class ASPP(nn.Module):
         self.bias=bias
         self.pooling=self._pooling(pooling)
         self.aconv_list=self._aconv_list(kernel_sizes,dilations)
-        self.out_conv=self._out_conv(out_kernel_size,out_batch_norm)
-        self.act=activation(act,**act_config)
+        self.out_conv=self._out_conv(out_conv_config,out_kernel_size)
 
 
     def forward(self, x):
@@ -85,9 +86,8 @@ class ASPP(nn.Module):
             ones=torch.ones(stack[0].shape,requires_grad=True).to(x.device)
             stack.append(self.pooling(x)*ones)
         x=torch.cat(stack,dim=1)
-        x=self.out_conv(x)
-        if self.act:
-            x=self.act(x)
+        if self.out_conv:
+            x=self.out_conv(x)
         return x
 
 
@@ -138,18 +138,12 @@ class ASPP(nn.Module):
         return pooling
 
 
-    def _out_conv(self,kernel_size,batch_norm):
-        in_ch=self.nb_aconvs*self.out_ch
-        if self.pooling: in_ch+=self.out_ch
-        conv=nn.Conv2d(
-            in_channels=in_ch,
-            out_channels=self.out_ch,
-            kernel_size=kernel_size,
-            padding=same_padding(kernel_size))
-        layers=[conv]
-        if batch_norm:
-            layers.append(nn.BatchNorm2d(self.out_ch))
-        return nn.Sequential(*layers)
+    def _out_conv(self,out_conv_config,out_kernel_size):
+        if out_conv_config is not False:
+            in_ch=self.nb_aconvs*self.out_ch
+            if self.pooling: in_ch+=self.out_ch
+            out_conv_config['kernel_size']=out_kernel_size
+            return blocks.Conv(in_ch,self.out_ch,**out_conv_config)
 
 
 

@@ -26,12 +26,11 @@ class Xception(nn.Module):
         exit_stack_chs: [1536,1536,2048]
         xblock_depth: 3
         nb_classes<int|None>:
-            - None for backbone (no classifier added)
-        classifier:
-        classifier_config:
-    Properties:
-    Links:
-
+            - None for backbone use (no classifier added)
+        classifier<str|nn.Module>: alias, module-name or module for classifier
+        classifier_config<dict>: 
+            - kwarg-dict for classifier
+            - nb_classes/in_ch will be derived from xception architecture
     """
     #
     # INSTANCE METHODS
