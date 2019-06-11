@@ -2,13 +2,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_models.helpers import parse_dropout, activation, same_padding
 #
-# CONSTANTS
-#
-DEFAULT_DROPOUT_RATE=0.5
-
-
-
-#
 # BLOCKS
 #
 class Conv(nn.Module):
@@ -97,8 +90,8 @@ class Conv(nn.Module):
             act,
             act_config)
         self.dropout, self.include_dropout=parse_dropout(dropout)
-
         
+
     def forward(self, x):
         x=self.conv_blocks(x)
         return F.dropout(x,p=self.dropout,training=self.include_dropout)
@@ -194,8 +187,6 @@ class Dense(nn.Module):
             out_ch=int(out_ch)
         if out_chs is None:
             out_chs=[out_ch]*depth
-        if dropout is True:
-            dropout=DEFAULT_DROPOUT_RATE
         self.out_ch=out_chs[-1]
         self.dense_blocks=self._dense_blocks(
             self.in_ch,

@@ -84,7 +84,7 @@ def parse_dropout(dropout):
             dropout=dropout
         include_dropout=True
     else:
-        dropout=False
+        dropout=0.0
         include_dropout=False 
     return dropout, include_dropout
 

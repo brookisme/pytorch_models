@@ -4,12 +4,6 @@ import torch.nn.functional as F
 import pytorch_models.blocks as blocks
 from pytorch_models.helpers import parse_dropout, same_padding
 #
-# CONSTANTS
-#
-DEFAULT_DROPOUT_RATE=0.5
-
-
-#
 # GENERAL BLOCKS
 #
 class ASPP(nn.Module):
@@ -86,10 +80,6 @@ class ASPP(nn.Module):
             bias=(not batch_norm)
         self.batch_norm=batch_norm
         self.relu=relu
-        if dropout is True:
-            self.dropout=DEFAULT_DROPOUT_RATE
-        else:
-            self.dropout=dropout
         self.bias=bias
         self.pooling=self._pooling(pooling)
         self.aconv_list=self._aconv_list(kernel_sizes,dilations)
@@ -108,6 +98,9 @@ class ASPP(nn.Module):
         return F.dropout(x,p=self.dropout,training=self.include_dropout)
 
 
+    #
+    # INTERNAL
+    #
     def _aconv_list(self,kernels,dilations):
         aconvs=[self._aconv(k,d,i) for i,(k,d) in enumerate(zip(kernels,dilations))]
         return nn.ModuleList(aconvs)
@@ -153,7 +146,6 @@ class ASPP(nn.Module):
         else:
             pooling=False
         return pooling
-
 
         
     def _out_conv(self,kernel_size,config):

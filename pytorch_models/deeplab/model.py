@@ -70,7 +70,7 @@ class DeeplabV3plus(nn.Module):
         self.upsample_mode=upsample_mode
         if dropout is not None:
             backbone_config['dropout']=dropout
-            aspp_config['dropout']=aspp_config
+            aspp_config['dropout']=dropout
         self.backbone,backbone_out_ch,backbone_low_level_out_ch=self._backbone(
             backbone,
             in_ch,
