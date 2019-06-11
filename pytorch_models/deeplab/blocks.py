@@ -108,11 +108,11 @@ class ASPP(nn.Module):
 
 
     def _aconv_list(self,kernels,dilations):
-        aconvs=[self._aconv(k,d,i) for i,(k,d) in enumerate(zip(kernels,dilations))]
+        aconvs=[self._aconv(k,d) for k,d in zip(kernels,dilations)]
         return nn.ModuleList(aconvs)
 
 
-    def _aconv(self,kernel,dilation,index):
+    def _aconv(self,kernel,dilation):
         aconv=nn.Conv2d(
             in_channels=self.in_ch,
             out_channels=self.out_ch,
@@ -126,7 +126,7 @@ class ASPP(nn.Module):
         if self.relu:
             layers.append(nn.ReLU())
         if self.dropout:
-            layers.append(nn.Dropout2d(p=dropout))
+            layers.append(nn.Dropout2d(p=self.dropout))
         return nn.Sequential(*layers)
 
 
