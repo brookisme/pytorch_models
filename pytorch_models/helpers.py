@@ -6,7 +6,7 @@ import torch.nn as nn
 SOFTMAX='Softmax'
 LOG_SOFTMAX='LogSoftmax'
 SIGMOID='Sigmoid'
-
+DEFAULT_DROPOUT_RATE=0.5
 
 
 
@@ -72,6 +72,24 @@ def output_activation(act=None,out_ch=None,**act_config):
     elif act and callable(act()):
         act=act(**act_config)
     return act 
+
+
+
+
+#
+# CONFIG
+#
+def parse_dropout(dropout):
+    if dropout:
+        if dropout is True:
+            dropout=DEFAULT_DROPOUT_RATE
+        else:
+            dropout=dropout
+        include_dropout=True
+    else:
+        dropout=0.0
+        include_dropout=False 
+    return dropout, include_dropout
 
 
 

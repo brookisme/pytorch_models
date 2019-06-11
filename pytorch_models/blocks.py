@@ -1,13 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
+from pytorch_models.helpers import DEFAULT_DROPOUT_RATE
 from pytorch_models.helpers import activation, same_padding
-#
-# CONSTANTS
-#
-DEFAULT_DROPOUT_RATE=0.5
-
-
-
 #
 # BLOCKS
 #
