@@ -46,7 +46,6 @@ class DeeplabV3plus(nn.Module):
             - False: No output activation
             - None: Sigmoid if out_ch=1 otherwise Softmax
         out_activation_config<dict>: kwarg-dict for output_activation
-
     """
     XCEPTION='xception'
     UPMODE='bilinear'
@@ -102,10 +101,13 @@ class DeeplabV3plus(nn.Module):
 
     def _backbone(self,backbone,in_ch,backbone_config,out_ch,low_level_out_ch):
         if backbone==DeeplabV3plus.XCEPTION:
-            net=Xception(in_ch=in_ch,**backbone_config)
-            out_ch=out_ch or net.out_ch
-            low_level_out_ch=low_level_out_ch or net.low_level_out_ch
-            return net, out_ch, low_level_out_ch
+            backbone=Xception(in_ch=in_ch,**backbone_config)
+        elif not isinstance(backbone,nn.Module):
+            backbone=None
+        if backbone:
+            out_ch=out_ch or backbone.out_ch
+            low_level_out_ch=low_level_out_ch or backbone.low_level_out_ch
+            return backbone, out_ch, low_level_out_ch
         else:
             raise NotImplementedError("Currently only supports 'xception' backbone")
 

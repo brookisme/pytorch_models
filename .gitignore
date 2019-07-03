@@ -10,9 +10,10 @@ pip-selfcheck.json
 man
 
 # Codebase
-playground.py
-playground.sh
-playground/
+Playground*
+playground*
+scratch*
+
 lr_finder.py
 
 # SUBLIME
