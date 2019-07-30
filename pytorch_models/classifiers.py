@@ -97,7 +97,7 @@ class GAPClassifier(nn.Module):
             nb_dense=1,
             dense_chs=None,
             dense_config={},
-            act=None,
+            act=False,
             act_config={}):
         super(GAPClassifier, self).__init__()
         if nb_convs:
@@ -115,7 +115,7 @@ class GAPClassifier(nn.Module):
             if conv_chs:
                 dense_in_ch=conv_chs[-1]
             else:
-                dense_in_ch=conv_out_ch
+                dense_in_ch=conv_out_ch or in_ch
             if dense_chs:
                 if dense_chs[-1]!=nb_classes:
                     raise ValueError(NB_CLASSES_ERROR)

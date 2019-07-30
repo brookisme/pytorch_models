@@ -43,7 +43,7 @@ def activation(act=None,**act_config):
     return act 
 
 
-def output_activation(act=None,out_ch=None,**act_config):
+def output_activation(act=False,out_ch=None,multi_label=False,**act_config):
     """ get output_activation
 
     * similar to `activation` but focused on output activations
@@ -65,7 +65,7 @@ def output_activation(act=None,out_ch=None,**act_config):
             act_config['dim']=act_config.get('dim',1)
         act=getattr(nn,act)(**act_config)
     elif act is None:
-        if out_ch==1:
+        if multi_label or out_ch==1:
             act=nn.Sigmoid()
         else:
             act=nn.Softmax(dim=1)

@@ -10,5 +10,12 @@ cd pytorch_models
 pip install -e .
 ```
 
+---
+
+README-TODO:
+    - [ ]: explain org
+    - [ ]: examples
+    - [ ]: list of models
+    - [ ]: model specific docs
 
 
