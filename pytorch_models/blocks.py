@@ -165,6 +165,9 @@ class Dense(nn.Module):
             - if truthy dropout applied after each dense/linear layer 
             - if float dropout rate = dropout
             - else dropout rate=0.5
+        last_act<bool>: 
+            - by default activation is ignored for the last dense layer.
+            - if true, all dense layers will be followed by the activation
         act<str|func|False>: activation method or method_name
         act_config<dict>: kwarg-dict for activation function after each dense/linear layer 
     """
@@ -178,6 +181,7 @@ class Dense(nn.Module):
             depth=1, 
             batch_norm=True,
             dropout=False,
+            last_act=False,
             act='ReLU',
             act_config={}):
         super(Dense, self).__init__()
@@ -196,6 +200,7 @@ class Dense(nn.Module):
             out_chs,
             batch_norm,
             dropout,
+            last_act,
             act,
             act_config)
 
@@ -213,10 +218,12 @@ class Dense(nn.Module):
             out_chs,
             batch_norm,
             dropout,
+            last_act,
             act,
             act_config):
         layers=[]
-        for ch in out_chs:
+        nb_dense=len(out_chs)
+        for i,ch in enumerate(out_chs,start=1):
             layers.append(
                 nn.Linear(
                     in_features=in_ch,
@@ -224,7 +231,7 @@ class Dense(nn.Module):
                     bias=(not batch_norm)))
             if batch_norm:
                 layers.append(nn.BatchNorm1d(ch))
-            if act:
+            if act and (last_act or (i!=nb_dense)):
                 layers.append(activation(act=act,**act_config))
             if dropout:
                 layers.append(nn.Dropout2d(p=dropout))
