@@ -124,6 +124,7 @@ class GAPClassifier(nn.Module):
                 out_ch=nb_classes,
                 out_chs=dense_chs,
                 depth=nb_dense,
+                dropout=False,
                 **dense_config)
         else:
             self.dense=False
