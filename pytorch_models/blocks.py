@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_models.helpers import DEFAULT_DROPOUT_RATE
@@ -27,11 +28,16 @@ class Conv(nn.Module):
             - only valid if out_chs is None
         kernel_size<int>: 
             - kernel size
-            - only valid if kernel_sizes is None
+            - only used if kernel_sizes is None
         kernel_sizes<list|None>:
             - the kernel size for each conv
             - if None kernel_sizes=[kernel_size]*len(out_chs)
-        stride<int>: stride
+        stride<int>: 
+            - strid
+            - only used if strides is None
+        strides<int>: 
+            - the strides for each conv
+            - if None strides=[stride]*len(out_chs)
         dilation<int>: dilation rate
         padding<int|str>: 
             - padding
@@ -62,6 +68,7 @@ class Conv(nn.Module):
             kernel_size=3, 
             kernel_sizes=None,
             stride=1,
+            strides=None,
             dilation=1,
             padding=SAME, 
             batch_norm=True,
@@ -79,12 +86,14 @@ class Conv(nn.Module):
         self.out_ch=out_chs[-1]
         if kernel_sizes is None:
             kernel_sizes=[kernel_size]*len(out_chs)
+        if strides is None:
+            strides=[stride]*len(out_chs)
         self.padding=padding
         self.conv_blocks=self._conv_blocks(
             in_ch,
             out_chs,
             kernel_sizes,
-            stride,
+            strides,
             dilation,
             batch_norm,
             dropout,
@@ -104,20 +113,20 @@ class Conv(nn.Module):
             in_ch,
             out_chs,
             kernel_sizes,
-            stride,
+            strides,
             dilation,
             batch_norm,
             dropout,
             act,
             act_config):
         layers=[]
-        for ch,k in zip(out_chs,kernel_sizes):
+        for ch,k,s in zip(out_chs,kernel_sizes,strides):
             layers.append(
                 nn.Conv2d(
                     in_channels=in_ch,
                     out_channels=ch,
                     kernel_size=k,
-                    stride=stride,
+                    stride=s,
                     padding=self._padding(k,dilation),
                     dilation=dilation,
                     bias=(not batch_norm)))
@@ -137,6 +146,86 @@ class Conv(nn.Module):
         else:
             return self.padding
 
+
+class Residual(nn.Module):
+    r""" Residual Block
+
+    Args:
+        in_ch<int>: 
+            - Number of channels in input
+            - if None try block.in_ch
+        out_ch<int|None>: 
+            - number of channels in output
+            - if None try block.out_ch
+        block<nn.Module|None>:
+            - inner block for residual block
+            - if None uses Conv through conv_kwargs
+        shortcut_method<None|str>
+            - method for managing shortcuts with increasing dimensions. options:
+            - Residual.IDENTITY_SHORTCUT | None: use identity
+            - Residual.ZERO_PADDING_SHORTCUT: add zero padding
+            - Residual.CONV_SHORTCUT: use a 1x1 conv to increase the padding
+        **conv_kwargs:
+            - kwargs for Conv bock (see Conv)
+            - ignored if <block> is passed   
+    """
+    #
+    # CONSTANTS
+    #
+    IDENTITY_SHORTCUT='identity'
+    ZERO_PADDING_SHORTCUT='zero_padding'
+    CONV_SHORTCUT='conv'
+
+
+    #
+    # PUBLIC METHODS
+    #
+    def __init__(self,
+            in_ch=None,
+            out_ch=None,
+            block=None,
+            shortcut_method=IDENTITY_SHORTCUT,
+            **conv_kwargs):
+        super(Residual, self).__init__()
+        if not block:
+            block=Conv(in_ch=in_ch,out_ch=out_ch,**conv_kwargs)
+        self.block=block
+        if not in_ch:
+            in_ch=block.in_ch
+        if not in_ch:
+            out_ch=block.out_ch
+        self._set_shortcut(shortcut_method,in_ch,out_ch)
+
+
+    def forward(self, x):
+        return self.shortcut(self._zpad(x)).add_(self.block(x))
+
+
+    def _set_shortcut(self,method,in_ch,out_ch):
+        if method==Residual.CONV_SHORTCUT:
+            self.shortcut=nn.Conv2d(
+                in_ch, 
+                out_ch, 
+                kernel_size=1, 
+                stride=1, 
+                bias=False)
+            self.zero_pad=False
+        else:
+            self.shortcut=nn.Identity()
+            if method==Residual.ZERO_PADDING_SHORTCUT:
+                self.zero_pad=out_ch-in_ch
+            else:
+                self.zero_pad=False
+
+
+    def _zpad(self,x):
+        if self.zero_pad:
+            shape=x.shape
+            print(shape)
+            z=torch.zeros(shape[0],self.zero_pad,shape[2],shape[3])
+            print(z.shape)
+            x=torch.cat([x,z],dim=1)
+        return x
 
 
 
