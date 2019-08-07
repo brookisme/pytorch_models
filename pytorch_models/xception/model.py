@@ -12,7 +12,7 @@ class Xception(nn.Module):
     Xception Network or Backbone from DeeplabV3+
     
     Args:
-        in_ch
+        in_ch<int>: number of input channels
         output_stride<int>: output_stride
         low_level_stride<int>:
             - the stride at which to return low-level-features
@@ -25,11 +25,11 @@ class Xception(nn.Module):
         exit_xblock_ch: 1024
         exit_stack_chs: [1536,1536,2048]
         xblock_depth: 3
-        nb_classes<int|None>:
-            - None for backbone use (no classifier added)
         dropout<float|bool|None>:
             - global dropout
             - if is True dropout=0.5
+        nb_classes<int|None>:
+            - None for backbone use (no classifier added)
         classifier<str|nn.Module>: alias, module-name or module for classifier
         classifier_config<dict>: 
             - kwarg-dict for classifier
@@ -49,8 +49,8 @@ class Xception(nn.Module):
             exit_xblock_ch=1024,
             exit_stack_chs=[1536,1536,2048],
             xblock_depth=3,
-            nb_classes=None,
             dropout=False,
+            nb_classes=None,
             classifier='gap',
             classifier_config={}):
         super(Xception,self).__init__()
