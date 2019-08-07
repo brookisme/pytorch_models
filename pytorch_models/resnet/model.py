@@ -6,7 +6,10 @@ from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
 
-
+#
+# CONSTANTS
+#
+LOW_LEVEL_ERROR='Resnet.low_level_output_strides = {} not implemented'
 _preset_models={
     '18': [
         {   
@@ -123,6 +126,10 @@ class Resnet(nn.Module):
     MODELS=_preset_models
     DEFAULT_INPUT_CONV={ 'out_ch': 64, 'kernel_size': 7, 'stride': 2 }
     DEFUALT_INPUT_POOL={ 'kernel_size': 3, 'stride': 2 }
+    LOW_LEVEL_ALL='all'
+    LOW_LEVEL_RES='resblock'
+    LOW_LEVEL_INPUT_CONV='input_conv'
+    LOW_LEVEL_POOL='pool'
     #
     # INSTANCE METHODS
     #
@@ -166,17 +173,17 @@ class Resnet(nn.Module):
         low_level_channels=[]
         if self.input_conv:
             x=self.input_conv(x)
-            if self._is_low_level_feature():
+            if self._is_low_level_feature(Resnet.LOW_LEVEL_INPUT_CONV):
                 low_level_features.append(x)
                 low_level_channels.append(self.input_conv.out_ch)
         if self.input_pool:
             x=self.input_pool(x)
-            if self._is_low_level_feature():
+            if self._is_low_level_feature(Resnet.LOW_LEVEL_POOL):
                 low_level_features.append(x)
                 low_level_channels.append(self.input_conv.out_ch)    
         for block in self.blocks:
             x=block(x)
-            if self._is_low_level_feature():
+            if block.output_stride and self._is_low_level_feature(Resnet.LOW_LEVEL_RES):
                 low_level_features.append(x)
                 low_level_channels.append(block.out_ch)
         if self.classifier_block:
@@ -193,8 +200,6 @@ class Resnet(nn.Module):
     def _init_properties(self,in_ch,shortcut_method,low_level_output_strides):
         self.in_ch=in_ch
         self.default_shortcut_method=shortcut_method
-        if isinstance(low_level_output_strides,int):
-            low_level_output_strides=[low_level_output_strides]
         self.low_level_output_strides=low_level_output_strides
 
 
@@ -235,10 +240,21 @@ class Resnet(nn.Module):
         self.output_stride_index+=1
         self.output_stride_state=(2**self.output_stride_index)
 
-    def _is_low_level_feature(self):
+
+    def _is_low_level_feature(self,tag=None):
         self._increment_output_stride_state()
         if self.low_level_output_strides:
-            return self.output_stride_state in self.low_level_output_strides
+            if isinstance(self.low_level_output_strides,int):
+                return self.low_level_output_strides==self.output_stride_state
+            elif isinstance(self.low_level_output_strides,str):
+                return self.low_level_output_strides==tag
+            else:
+                state_is_in=self.output_stride_state in self.low_level_output_strides
+                if tag:
+                    tag_is_in=tag in self.low_level_output_strides
+                    return state_is_in or tag_is_in
+                else:
+                    return state_is_in
         else:
             return False
 

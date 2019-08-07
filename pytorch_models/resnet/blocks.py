@@ -14,8 +14,7 @@ class ResBlock(nn.Module):
             shortcut_method=blocks.Residual.CONV_SHORTCUT,
             **conv_config):
         super(ResBlock, self).__init__()
-        self.in_ch=in_ch
-        self.shortcut_method=shortcut_method
+        self._init_properties(in_ch,shortcut_method)
         self.blocks=self._blocks(in_ch,nb_blocks,init_stride,conv_config)
         self.out_ch=self.blocks[-1].out_ch
 
@@ -27,11 +26,18 @@ class ResBlock(nn.Module):
     #
     # INTERNAL
     #
+    def _init_properties(self,in_ch,shortcut_method):
+        self.in_ch=in_ch
+        self.shortcut_method=shortcut_method
+        self.output_stride=1
+
+
     def _blocks(self,in_ch,nb_blocks,init_stride,conv_config):
         layers=[]
         for i in range(nb_blocks):
             if i==0 and (init_stride!=1):
                 strides=[init_stride]+[1]*(self._block_depth(conv_config)-1)
+                self.output_stride=init_stride
             else:
                 strides=None
             rblock=blocks.Residual(
