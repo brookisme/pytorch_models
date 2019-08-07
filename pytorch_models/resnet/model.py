@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_models.helpers as h
 from pytorch_models.blocks import Residual, Conv
+from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
 
@@ -10,86 +11,80 @@ _preset_models={
     '18': [
         {   
             'init_stride': 1,
-            'depth': 2,
+            'nb_blocks': 2,
             'conv': { 'out_ch': 64, 'depth': 2 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 2,
             'conv': { 'out_ch': 128, 'depth': 2 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 2,
             'conv': { 'out_ch': 256, 'depth': 2 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 2,
             'conv': { 'out_ch': 512, 'depth': 2 }
         }
     ],
     '34': [
         {   
             'init_stride': 1,
-            'depth': 2,
+            'nb_blocks': 3,
             'conv': { 'out_ch': 64, 'depth': 3 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 4,
             'conv': { 'out_ch': 128, 'depth': 4 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 6,
             'conv': { 'out_ch': 256, 'depth': 6 }
-        },            
-        {   
-            'depth': 2,
+        },{
+            'nb_blocks': 3,
             'conv': { 'out_ch': 512, 'depth': 3 }
         }
     ],
     '50': [
         {
             'init_stride': 1,
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 4,
+            'nb_blocks': 4,
             'conv': { 'out_chs': [128,128,512], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 6,
+            'nb_blocks': 6,
             'conv': { 'out_chs': [256,256,1024], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [512,512,2048], 'kernel_sizes': [1,3,1] }
         }
     ],
     '101': [
         {
             'init_stride': 1,
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 4,
+            'nb_blocks': 4,
             'conv': { 'out_chs': [128,128,512], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 23,
+            'nb_blocks': 23,
             'conv': { 'out_chs': [256,256,1024], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [512,512,2048], 'kernel_sizes': [1,3,1] }
         }
     ],
     '152': [
         {
             'init_stride': 1,
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 8,
+            'nb_blocks': 8,
             'conv': { 'out_chs': [128,128,512], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 36,
+            'nb_blocks': 36,
             'conv': { 'out_chs': [256,256,1024], 'kernel_sizes': [1,3,1] }
         },{
-            'depth': 3,
+            'nb_blocks': 3,
             'conv': { 'out_chs': [512,512,2048], 'kernel_sizes': [1,3,1] }
         }
     ]
@@ -111,12 +106,15 @@ class Resnet(nn.Module):
             - Residual.IDENTITY_SHORTCUT | None: use identity
             - Residual.ZERO_PADDING_SHORTCUT: add zero padding
             - Residual.CONV_SHORTCUT: use a 1x1 conv to increase the padding
+        low_level_output_strides<int|list|bool>:
+            *** 
+        dropout<float|bool|None>: 
+            * TODO: NOT IMPLEMENTEDED
+            - global dropout
+            - if is True dropout=0.5
         nb_classes<int|None>:
             - None for backbone use (no classifier added)
             - or list of residual block configurations
-        dropout<float|bool|None>:
-            - global dropout
-            - if is True dropout=0.5
         classifier<str|nn.Module>: alias, module-name or module for classifier
         classifier_config<dict>: 
             - kwarg-dict for classifier
@@ -124,7 +122,7 @@ class Resnet(nn.Module):
     """
     MODELS=_preset_models
     DEFAULT_INPUT_CONV={ 'out_ch': 64, 'kernel_size': 7, 'stride': 2 }
-    DEFUALT_INPUT_POOL={ 'kernel_size': 2 }
+    DEFUALT_INPUT_POOL={ 'kernel_size': 3, 'stride': 2 }
     #
     # INSTANCE METHODS
     #
@@ -134,12 +132,13 @@ class Resnet(nn.Module):
             input_pool=DEFUALT_INPUT_POOL,
             blocks=18,
             shortcut_method=Residual.CONV_SHORTCUT,
+            low_level_output_strides=False,
             dropout=False,
             nb_classes=None,
             classifier='gap',
             classifier_config={}):
         super(Resnet,self).__init__()
-        self.default_shortcut_method=shortcut_method
+        self._init_properties(in_ch,shortcut_method,low_level_output_strides)
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
             in_ch=self.input_conv.out_ch
@@ -162,13 +161,28 @@ class Resnet(nn.Module):
 
 
     def forward(self,x):
+        self._init_output_stride_state()
+        low_level_features=[]
+        low_level_channels=[]
         if self.input_conv:
             x=self.input_conv(x)
+            if self._is_low_level_feature():
+                low_level_features.append(x)
+                low_level_channels.append(self.input_conv.out_ch)
         if self.input_pool:
             x=self.input_pool(x)
-        x=self.blocks(x)
+            if self._is_low_level_feature():
+                low_level_features.append(x)
+                low_level_channels.append(self.input_conv.out_ch)    
+        for block in self.blocks:
+            x=block(x)
+            if self._is_low_level_feature():
+                low_level_features.append(x)
+                low_level_channels.append(block.out_ch)
         if self.classifier_block:
             return self.classifier_block(x)
+        elif low_level_channels:
+            return x, low_level_features, low_level_channels
         else:
             return x
 
@@ -176,30 +190,32 @@ class Resnet(nn.Module):
     #
     # INTERNAL
     #
+    def _init_properties(self,in_ch,shortcut_method,low_level_output_strides):
+        self.in_ch=in_ch
+        self.default_shortcut_method=shortcut_method
+        if isinstance(low_level_output_strides,int):
+            low_level_output_strides=[low_level_output_strides]
+        self.low_level_output_strides=low_level_output_strides
+
+
     def _blocks(self,in_ch,blocks):
         layers=[]
         for block in self._blocks_list(blocks):
-            conv_config=block['conv']
-            depth=block['depth']
-            init_stride=block.get('init_stride',2)
-            for i in range(depth):
-                if i==0 and (init_stride!=1):
-                    strides=[init_stride]+[1]*(self._block_depth(conv_config)-1)
-                else:
-                    strides=None
-                rblock=Residual(
-                    in_ch=in_ch,
-                    strides=strides,
-                    shortcut_method=self._shortcut_method(
-                        in_ch,
-                        conv_config,
-                        strides is not None),
-                    shortcut_stride=init_stride,
-                    **conv_config
-                )
-                in_ch=rblock.out_ch
-                layers.append(rblock)
-        return nn.Sequential(*layers)
+            block_config, conv_config=self._parse_block(block)
+            rblock=ResBlock(in_ch,**block_config,**conv_config)
+            layers.append(rblock)
+            in_ch=rblock.out_ch
+        return nn.ModuleList(layers)
+
+
+    def _parse_block(self,block):
+        block_config=block.copy()        
+        block_config['shortcut_method']=block.get(
+            'shortcut_method',
+            self.default_shortcut_method)
+        block_config['init_stride']=block.get('init_stride',2)
+        conv_config=block_config.pop('conv')
+        return block_config, conv_config
 
 
     def _blocks_list(self,blocks):
@@ -210,31 +226,24 @@ class Resnet(nn.Module):
         return blocks
 
 
-    def _block_depth(self,config):
-        depth=config.get('depth',False)
-        if not depth:
-            out_chs=config.get('out_chs')
-            if out_chs:
-                depth=len(out_chs)
-            else:
-                depth=1
-        return depth
+    def _init_output_stride_state(self):
+        self.output_stride_index=0
+        self.output_stride_state=None
 
 
-    def _shortcut_method(self,in_ch,config,strided):
-        if strided:
-            return self.default_shortcut_method
+    def _increment_output_stride_state(self):
+        self.output_stride_index+=1
+        self.output_stride_state=(2**self.output_stride_index)
+
+    def _is_low_level_feature(self):
+        self._increment_output_stride_state()
+        if self.low_level_output_strides:
+            return self.output_stride_state in self.low_level_output_strides
         else:
-            out_chs=config.get('out_chs')
-            if out_chs:
-                out_ch=out_chs[-1]
-            else:
-                out_ch=config.get('out_ch',in_ch)
-            delta_ch=out_ch-in_ch
-            if delta_ch:
-                return self.default_shortcut_method
-            else:
-                return Residual.IDENTITY_SHORTCUT
+            return False
+
+
+
 
 
 

@@ -1,69 +1,79 @@
 import torch
 import torch.nn as nn
+import pytorch_models.blocks as blocks
 
 
-class StridedIdentity(nn.Module):
-    """ Strided Identity: nn.Conv2d convenience wrapper. 
+class ResBlock(nn.Module):
+    """ ResBlock
 
-    Removes pixels between stride, otherwise identity
-
-    Example:
-    
-    inpt=>
-        tensor([[[[  1.,   2.,   3.],
-                  [  4.,   5.,   6.],
-                  [  7.,   8.,   9.]],
-
-                 [[ 10.,  20.,  30.],
-                  [ 40.,  50.,  60.],
-                  [ 70.,  80.,  90.]]]])
-
-
-    StridedIdentity(2)(inpt)=>
-        tensor([[[[  1.,   3.],
-                  [  7.,   9.]],
-
-                 [[ 10.,  30.],
-                  [ 70.,  90.]]]])
-
-    Args:
-        ch<int>: number of input/output channels
-        stride<int>: stride
-    """ 
-    #
-    # INSTANCE METHODS
-    #
-    def __init__(self,ch,stride=2):
-        super(StridedIdentity, self).__init__()
-        self.in_ch=ch
-        self.out_ch=ch
-        self.strided_eye=self._strided_eye(stride)
+    """
+    def __init__(self,
+            in_ch,
+            nb_blocks,
+            init_stride=None,
+            shortcut_method=blocks.Residual.CONV_SHORTCUT,
+            **conv_config):
+        super(ResBlock, self).__init__()
+        self.in_ch=in_ch
+        self.shortcut_method=shortcut_method
+        self.blocks=self._blocks(in_ch,nb_blocks,init_stride,conv_config)
+        self.out_ch=self.blocks[-1].out_ch
 
 
-    def forward(self, x):
-        return self.strided_eye(x)
+    def forward(self,x):
+        return self.blocks(x)
 
 
     #
     # INTERNAL
     #
-    def _strided_eye(self,stride):
-        ident=torch.nn.Conv2d(
-                self.in_ch, 
-                self.in_ch, 
-                kernel_size=1, 
-                stride=stride, 
-                groups=self.in_ch, 
-                bias=False)
-        self._freeze_and_ident(ident)
-        return ident
+    def _blocks(self,in_ch,nb_blocks,init_stride,conv_config):
+        layers=[]
+        for i in range(nb_blocks):
+            if i==0 and (init_stride!=1):
+                strides=[init_stride]+[1]*(self._block_depth(conv_config)-1)
+            else:
+                strides=None
+            rblock=blocks.Residual(
+                in_ch=in_ch,
+                strides=strides,
+                shortcut_method=self._shortcut_method(
+                    in_ch,
+                    conv_config,
+                    strides is not None),
+                shortcut_stride=init_stride,
+                **conv_config
+            )
+            in_ch=rblock.out_ch
+            layers.append(rblock)
+        return nn.Sequential(*layers)
 
 
-    def _freeze_and_ident(self,ident):
-        for p in ident.parameters():
-            p.requires_grad=False
-            p.data.copy_(torch.ones_like(p))
+    def _block_depth(self,config):
+        depth=config.get('depth',False)
+        if not depth:
+            out_chs=config.get('out_chs')
+            if out_chs:
+                depth=len(out_chs)
+            else:
+                depth=1
+        return depth
 
+
+    def _shortcut_method(self,in_ch,config,strided):
+        if strided:
+            return self.shortcut_method
+        else:
+            out_chs=config.get('out_chs')
+            if out_chs:
+                out_ch=out_chs[-1]
+            else:
+                out_ch=config.get('out_ch',in_ch)
+            delta_ch=out_ch-in_ch
+            if delta_ch:
+                return self.shortcut_method
+            else:
+                return blocks.Residual.IDENTITY_SHORTCUT
 
 
 
