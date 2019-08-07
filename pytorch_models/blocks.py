@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pytorch_models.resnet.blocks import StridedIdentity
 from pytorch_models.helpers import DEFAULT_DROPOUT_RATE
 from pytorch_models.helpers import activation, same_padding
 #
@@ -147,8 +148,16 @@ class Conv(nn.Module):
             return self.padding
 
 
+
+
 class Residual(nn.Module):
     r""" Residual Block
+
+    Add a residual shortcut to block. The block can either be passed
+    directly or you can include kwargs for Conv to create an conv-block.
+
+    Note: cropping/padding of shortcut for cases where the inner block
+    changes the HxW of the input has not yet been implemented 
 
     Args:
         in_ch<int>: 
@@ -185,6 +194,7 @@ class Residual(nn.Module):
             out_ch=None,
             block=None,
             shortcut_method=IDENTITY_SHORTCUT,
+            shortcut_stride=None,
             **conv_kwargs):
         super(Residual, self).__init__()
         if not block:
@@ -192,40 +202,43 @@ class Residual(nn.Module):
         self.block=block
         if not in_ch:
             in_ch=block.in_ch
-        if not in_ch:
+        if not out_ch:
             out_ch=block.out_ch
-        self._set_shortcut(shortcut_method,in_ch,out_ch)
+        self.in_ch=in_ch
+        self.out_ch=out_ch
+        self.shortcut_method=shortcut_method
+        self._set_shortcut(shortcut_stride)
 
 
     def forward(self, x):
         return self.shortcut(self._zpad(x)).add_(self.block(x))
 
 
-    def _set_shortcut(self,method,in_ch,out_ch):
-        if method==Residual.CONV_SHORTCUT:
+    def _set_shortcut(self,shortcut_stride):
+        if self.shortcut_method==Residual.CONV_SHORTCUT:
+            print('--',shortcut_stride)
             self.shortcut=nn.Conv2d(
-                in_ch, 
-                out_ch, 
+                self.in_ch, 
+                self.out_ch, 
                 kernel_size=1, 
-                stride=1, 
+                stride=shortcut_stride or 2, 
                 bias=False)
             self.zero_pad=False
+        elif self.shortcut_method==Residual.ZERO_PADDING_SHORTCUT:
+            self.zero_pad=self.out_ch-self.in_ch
+            self.shortcut=StridedIdentity(self.out_ch,shortcut_stride or 2)
         else:
+            self.zero_pad=False
             self.shortcut=nn.Identity()
-            if method==Residual.ZERO_PADDING_SHORTCUT:
-                self.zero_pad=out_ch-in_ch
-            else:
-                self.zero_pad=False
 
 
     def _zpad(self,x):
         if self.zero_pad:
             shape=x.shape
-            print(shape)
             z=torch.zeros(shape[0],self.zero_pad,shape[2],shape[3])
-            print(z.shape)
             x=torch.cat([x,z],dim=1)
         return x
+
 
 
 
