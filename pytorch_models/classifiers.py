@@ -89,7 +89,7 @@ class GAPClassifier(nn.Module):
             self,
             in_ch,
             nb_classes,
-            nb_convs=1,
+            nb_convs=0,
             conv_out_ch=None,
             conv_chs=None,
             conv_config={},

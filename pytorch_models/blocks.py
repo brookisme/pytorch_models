@@ -216,7 +216,6 @@ class Residual(nn.Module):
 
     def _set_shortcut(self,shortcut_stride):
         if self.shortcut_method==Residual.CONV_SHORTCUT:
-            print('--',shortcut_stride)
             self.shortcut=nn.Conv2d(
                 self.in_ch, 
                 self.out_ch, 

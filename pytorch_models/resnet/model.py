@@ -139,22 +139,23 @@ class Resnet(nn.Module):
         super(Resnet,self).__init__()
         self.default_shortcut_method=shortcut_method
         self.blocks=self._blocks(in_ch,blocks)
-        # if nb_classes:
-        #     classifier_config['nb_classes']=nb_classes
-        #     classifier_config['in_ch']=exit_stack_chs[-1]
-        #     classifier=classifiers.get(classifier)
-        #     self.classifier_block=classifier(**classifier_config)
-        # else:
-        #     self.classifier_block=False
-        #     self.out_ch=exit_stack_chs[-1]
+        blocks_out_ch=self.blocks[-1].out_ch
+        if nb_classes:
+            classifier_config['nb_classes']=nb_classes
+            classifier_config['in_ch']=blocks_out_ch
+            classifier=classifiers.get(classifier)
+            self.classifier_block=classifier(**classifier_config)
+        else:
+            self.classifier_block=False
+            self.out_ch=blocks_out_ch
 
 
     def forward(self,x):
-        return self.blocks(x)
-        # if self.classifier_block:
-        #     return self.classifier_block(x)
-        # else:
-        #     return x
+        x=self.blocks(x)
+        if self.classifier_block:
+            return self.classifier_block(x)
+        else:
+            return x
 
 
     #
