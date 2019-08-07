@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_models.helpers as h
-from pytorch_models.blocks import Residual
+from pytorch_models.blocks import Residual, Conv
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
 
@@ -123,13 +123,15 @@ class Resnet(nn.Module):
             - nb_classes/in_ch will be derived from xception architecture
     """
     MODELS=_preset_models
-
-
+    DEFAULT_INPUT_CONV={ 'out_ch': 64, 'kernel_size': 7, 'stride': 2 }
+    DEFUALT_INPUT_POOL={ 'kernel_size': 2 }
     #
     # INSTANCE METHODS
     #
     def __init__(self,
             in_ch,
+            input_conv=DEFAULT_INPUT_CONV,
+            input_pool=DEFUALT_INPUT_POOL,
             blocks=18,
             shortcut_method=Residual.CONV_SHORTCUT,
             dropout=False,
@@ -138,6 +140,15 @@ class Resnet(nn.Module):
             classifier_config={}):
         super(Resnet,self).__init__()
         self.default_shortcut_method=shortcut_method
+        if input_conv:
+            self.input_conv=Conv(in_ch,**input_conv)
+            in_ch=self.input_conv.out_ch
+        else:
+            self.input_conv=False
+        if input_pool:
+            self.input_pool=nn.MaxPool2d(**input_pool)
+        else:
+            self.input_pool=False
         self.blocks=self._blocks(in_ch,blocks)
         blocks_out_ch=self.blocks[-1].out_ch
         if nb_classes:
@@ -151,6 +162,10 @@ class Resnet(nn.Module):
 
 
     def forward(self,x):
+        if self.input_conv:
+            x=self.input_conv(x)
+        if self.input_pool:
+            x=self.input_pool(x)
         x=self.blocks(x)
         if self.classifier_block:
             return self.classifier_block(x)
