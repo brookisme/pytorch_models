@@ -26,6 +26,7 @@ class LowLevelFeatures(object):
         self.output_stride=output_stride
         self.half_output_stride=int(float(output_stride)/2)
         self.low_level_output=low_level_output
+        self.drop_array=drop_array
         self.reset()
 
 
@@ -78,7 +79,6 @@ class LowLevelFeatures(object):
             del(self.low_level_channels)
         except Exception:
             pass
-        self.drop_array=True
         self.output_stride_state=1
         self.dilation=1
         self.low_level_features=[]

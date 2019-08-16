@@ -24,6 +24,8 @@ class Xception(nn.Module):
                 - Xception.LOW_LEVEL_ENTRY: after entry_conv
                 - A list containing output strides of interest and/or 
                   any of the above strings
+        low_level_drop_array<bool>: 
+            - if True and len(low-level-outputs)==1 return value instead of array
         entry_ch: 32
         entry_out_ch: 64
         xblock_chs: [128,256,728]
@@ -51,6 +53,7 @@ class Xception(nn.Module):
             in_ch,
             output_stride=None,
             low_level_output=False,
+            low_level_drop_array=True,
             entry_ch=32,
             entry_out_ch=64,
             xblock_chs=[128,256,728],
@@ -65,8 +68,12 @@ class Xception(nn.Module):
         super(Xception,self).__init__()
         self.output_stride=output_stride
         self.low_level_output=low_level_output
+        self.low_level_drop_array=low_level_drop_array
         self.dropout=dropout
-        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
+        llf=LowLevelFeatures(
+            self.output_stride,
+            self.low_level_output,
+            drop_array=self.low_level_drop_array)
         self.entry_block=blocks.EntryBlock(in_ch,entry_ch,entry_out_ch)
         llf.increment(self.entry_block.output_stride)
         self.xblocks=self._xblocks(
@@ -102,7 +109,10 @@ class Xception(nn.Module):
 
 
     def forward(self,x):
-        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
+        llf=LowLevelFeatures(
+            self.output_stride,
+            self.low_level_output,
+            drop_array=self.low_level_drop_array)
         x=self.entry_block(x)
         llf.increment(self.entry_block.output_stride)
         llf.update_low_level_features(
@@ -111,10 +121,10 @@ class Xception(nn.Module):
                 Xception.LOW_LEVEL_ENTRY)
         for xblock in self.xblocks:
             x=xblock(x)
-            llf.increment(xblock.out_ch)
+            llf.increment(xblock.output_stride)
             llf.update_low_level_features(
                     x,
-                    self.entry_block.out_ch,
+                    xblock.out_ch,
                     Xception.LOW_LEVEL_XBLOCK)
         x=self.bottleneck(x)
         x=self.exit_xblock(x)
