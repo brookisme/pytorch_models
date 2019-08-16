@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_models.helpers as h
+from pytorch_models.helpers import LowLevelFeatures
 from pytorch_models.blocks import Residual, Conv
 from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
@@ -169,21 +169,21 @@ class Resnet(nn.Module):
             shortcut_method,
             low_level_output,
             output_stride)
-        self._init_output_stride_state()
+        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
             in_ch=self.input_conv.out_ch
             self.input_conv_stride=input_conv.get('stride',1)
-            self._increment_output_stride_state(self.input_conv_stride)
+            llf.increment(self.input_conv_stride)
         else:
             self.input_conv=False
         if input_pool:
             self.input_pool=nn.MaxPool2d(**input_pool)
             self.input_pool_stride=input_pool.get('stride',1)
-            self._increment_output_stride_state(self.input_pool_stride)
+            llf.increment(self.input_pool_stride)
         else:
             self.input_pool=False
-        self.blocks=self._blocks(in_ch,blocks)
+        self.blocks=self._blocks(in_ch,blocks,llf)
         self.nb_resnet_blocks=len(self.blocks)
         blocks_out_ch=self.blocks[-1].out_ch
         if nb_classes:
@@ -197,31 +197,33 @@ class Resnet(nn.Module):
 
 
     def forward(self,x):
-        self._init_output_stride_state()
-        low_level_features=[]
-        low_level_channels=[]
+        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
         if self.input_conv:
             x=self.input_conv(x)
-            self._increment_output_stride_state(self.input_conv_stride)
-            if self._is_low_level_feature(Resnet.LOW_LEVEL_INPUT_CONV):
-                low_level_features.append(x)
-                low_level_channels.append(self.input_conv.out_ch)
+            llf.increment(self.input_conv_stride)
+            llf.update_low_level_features(
+                x,
+                self.input_conv.out_ch,
+                Resnet.LOW_LEVEL_INPUT_CONV)
         if self.input_pool:
             x=self.input_pool(x)
-            self._increment_output_stride_state(self.input_pool_stride)
-            if self._is_low_level_feature(Resnet.LOW_LEVEL_POOL):
-                low_level_features.append(x)
-                low_level_channels.append(self.input_conv.out_ch)    
+            llf.increment(self.input_pool_stride)
+            llf.update_low_level_features(
+                x,
+                self.input_conv.out_ch,
+                Resnet.LOW_LEVEL_POOL)
         for i,block in enumerate(self.blocks,start=1):
             x=block(x)
-            self._increment_output_stride_state(block.output_stride)
-            if (i!=self.nb_resnet_blocks) and self._is_low_level_feature(Resnet.LOW_LEVEL_RES):
-                low_level_features.append(x)
-                low_level_channels.append(block.out_ch)
+            llf.increment(block.output_stride)
+            if (i!=self.nb_resnet_blocks):
+                llf.update_low_level_features(
+                    x,
+                    block.out_ch,
+                    Resnet.LOW_LEVEL_RES)
         if self.classifier_block:
             return self.classifier_block(x)
-        elif low_level_channels:
-            return x, low_level_features, low_level_channels
+        elif llf.low_level_output:
+            return x, llf.low_level_features, llf.low_level_channels
         else:
             return x
 
@@ -238,20 +240,18 @@ class Resnet(nn.Module):
         self.output_stride=output_stride
 
 
-    def _blocks(self,in_ch,blocks):
+    def _blocks(self,in_ch,blocks,llf):
         layers=[]
         for block in self._blocks_list(blocks):
             block_config, conv_config, output_stride=self._parse_block(block)
-            if self.dilation!=1:
-                output_stride=1
             rblock=ResBlock(
                 in_ch,
-                output_stride=output_stride,
-                dilation=self.dilation,
+                output_stride=llf.stride(output_stride),
+                dilation=llf.dilation,
                 **block_config,
                 **conv_config)
             layers.append(rblock)
-            self._increment_output_stride_state(output_stride)
+            llf.increment(output_stride)
             in_ch=rblock.out_ch
         return nn.ModuleList(layers)
 
@@ -272,34 +272,6 @@ class Resnet(nn.Module):
         if isinstance(blocks,str):
             blocks=Resnet.MODELS[blocks]
         return blocks
-
-
-    def _init_output_stride_state(self):
-        self.output_stride_state=1
-        self.dilation=1
-
-
-    def _increment_output_stride_state(self,stride=2):
-        self.output_stride_state=self.output_stride_state*stride
-        if self.output_stride and (self.output_stride_state>=self.output_stride):
-            self.dilation*=stride
-
-
-    def _is_low_level_feature(self,tag=None):
-        if self.low_level_output:
-            if isinstance(self.low_level_output,int):
-                return self.low_level_output==self.output_stride_state
-            elif isinstance(self.low_level_output,str):
-                return self.low_level_output==tag
-            else:
-                state_is_in=self.output_stride_state in self.low_level_output
-                if tag:
-                    tag_is_in=tag in self.low_level_output
-                    return state_is_in or tag_is_in
-                else:
-                    return state_is_in
-        else:
-            return False
 
 
 

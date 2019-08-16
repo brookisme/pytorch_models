@@ -11,6 +11,57 @@ DEFAULT_DROPOUT_RATE=0.5
 
 
 #
+# TOOLS
+#
+class LowLevelFeatures(object):
+
+
+    def __init__(self,output_stride=False,low_level_output=False):
+        self.output_stride=output_stride
+        self.low_level_output=low_level_output
+        self.output_stride_state=1
+        self.dilation=1
+        self.low_level_features=[]
+        self.low_level_channels=[]
+
+
+    def increment(self,stride=2):
+        self.output_stride_state=self.output_stride_state*stride
+        if self.output_stride and (self.output_stride_state>=self.output_stride):
+            self.dilation*=stride
+
+
+    def stride(self,stride):
+        if self.dilation==1:
+            return stride
+        else:
+            return 1
+
+
+    def update_low_level_features(self,x,ch,tag=None):
+        if self.low_level_output:
+            if isinstance(self.low_level_output,int):
+                is_low_level_feature=self.low_level_output==self.output_stride_state
+            elif isinstance(self.low_level_output,str):
+                is_low_level_feature=self.low_level_output==tag
+            else:
+                state_is_in=self.output_stride_state in self.low_level_output
+                if tag:
+                    tag_is_in=tag in self.low_level_output
+                    is_low_level_feature=state_is_in or tag_is_in
+                else:
+                    is_low_level_feature=state_is_in
+            if is_low_level_feature:
+                self.low_level_features.append(x)
+                self.low_level_channels.append(ch)
+
+
+    def destroy(self):
+        del(self.low_level_features)
+        del(self.low_level_channels)
+
+
+#
 # MODELING
 #
 def same_padding(kernel_size,dilation=1):
