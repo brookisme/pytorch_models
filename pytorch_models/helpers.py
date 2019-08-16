@@ -1,3 +1,4 @@
+import math
 import re
 import torch.nn as nn
 #
@@ -14,6 +15,8 @@ DEFAULT_DROPOUT_RATE=0.5
 # TOOLS
 #
 class LowLevelFeatures(object):
+    ALL='all'
+    HALF='half'
 
 
     def __init__(self,
@@ -21,12 +24,9 @@ class LowLevelFeatures(object):
             low_level_output=False,
             drop_array=True):
         self.output_stride=output_stride
+        self.half_output_stride=int(float(output_stride)/2)
         self.low_level_output=low_level_output
-        self.drop_array=True
-        self.output_stride_state=1
-        self.dilation=1
-        self.low_level_features=[]
-        self.low_level_channels=[]
+        self.reset()
 
 
     def increment(self,stride=2):
@@ -47,7 +47,12 @@ class LowLevelFeatures(object):
             if isinstance(self.low_level_output,int):
                 is_low_level_feature=self.low_level_output==self.output_stride_state
             elif isinstance(self.low_level_output,str):
-                is_low_level_feature=self.low_level_output==tag
+                if self.low_level_output==LowLevelFeatures.ALL:
+                    is_low_level_feature=True
+                elif self.low_level_output==LowLevelFeatures.HALF:
+                    is_low_level_feature=self.half_output_stride==self.output_stride_state
+                else:
+                    is_low_level_feature=self.low_level_output==tag
             else:
                 state_is_in=self.output_stride_state in self.low_level_output
                 if tag:
@@ -67,9 +72,17 @@ class LowLevelFeatures(object):
             return self.low_level_features, self.low_level_channels
 
 
-    def destroy(self):
-        del(self.low_level_features)
-        del(self.low_level_channels)
+    def reset(self):
+        try:
+            del(self.low_level_features)
+            del(self.low_level_channels)
+        except Exception:
+            pass
+        self.drop_array=True
+        self.output_stride_state=1
+        self.dilation=1
+        self.low_level_features=[]
+        self.low_level_channels=[]
 
 
 #

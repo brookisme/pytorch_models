@@ -280,6 +280,8 @@ class EntryBlock(nn.Module):
             kernel_size=3,
             padding=1,
             bias=bias)
+        self.out_ch=entry_out_ch
+        self.output_stride=2
 
 
     def forward(self,x):
@@ -346,22 +348,22 @@ class XBlock(nn.Module):
                     depth=self.sconv_blocks_depth,
                     dilation=dilation)
         if dilation==1:
-            out_stride=2
+            self.output_stride=2
         else:
-            out_stride=1
+            self.output_stride=1
         self.reduction_layer=self._reduction_layer(
             out_ch,
             maxpool,
-            out_stride,
             dilation)
         self.pointwise_conv=nn.Conv2d(
             in_channels=in_ch,
             out_channels=out_ch,
-            stride=out_stride,
+            stride=self.output_stride,
             kernel_size=1)
         self.pointwise_bn=nn.BatchNorm2d(out_ch)
         self.dropout, self.include_dropout=parse_dropout(dropout)
-
+        self.out_ch=out_ch
+        
 
     def forward(self,x):
         xpc=self.pointwise_conv(x)
@@ -380,7 +382,7 @@ class XBlock(nn.Module):
     #
     # INTERNAL
     #
-    def _reduction_layer(self,ch,maxpool,stride,dilation):
+    def _reduction_layer(self,ch,maxpool,dilation):
         if maxpool:
             if stride==1:
                 pool_padding=1
@@ -388,14 +390,14 @@ class XBlock(nn.Module):
                 pool_padding=0
             return nn.MaxPool2d(
                 kernel_size=3, 
-                stride=stride,
+                stride=self.output_stride,
                 dilation=dilation,
                 padding=pool_padding)
         else:
             return SeparableConv2d(
                 in_ch=ch,
                 out_ch=ch,
-                stride=stride,
+                stride=self.output_stride,
                 dilation=dilation)
 
 

@@ -143,7 +143,6 @@ class Resnet(nn.Module):
     MODELS=_preset_models
     DEFAULT_INPUT_CONV={ 'out_ch': 64, 'kernel_size': 7, 'stride': 2 }
     DEFUALT_INPUT_POOL={ 'kernel_size': 3, 'stride': 2 }
-    LOW_LEVEL_ALL='all'
     LOW_LEVEL_RES='resblock'
     LOW_LEVEL_UNET='unet'
     LOW_LEVEL_INPUT_CONV='input_conv'
@@ -244,9 +243,10 @@ class Resnet(nn.Module):
         layers=[]
         for block in self._blocks_list(blocks):
             block_config, conv_config, output_stride=self._parse_block(block)
+            output_stride=llf.stride(output_stride)
             rblock=ResBlock(
                 in_ch,
-                output_stride=llf.stride(output_stride),
+                output_stride=output_stride,
                 dilation=llf.dilation,
                 **block_config,
                 **conv_config)
