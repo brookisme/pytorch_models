@@ -14,10 +14,10 @@ DEFAULT_DROPOUT_RATE=0.5
 #
 # TOOLS
 #
-class LowLevelFeatures(object):
+class StrideManager(object):
     """
 
-    LowLevelFeatures provides two main functions:
+    StrideManager provides two main functions:
 
         1. Track current output stride of model and provide the correct
            dilation (as property) and (stride) as method so the model can
@@ -33,8 +33,8 @@ class LowLevelFeatures(object):
             - if truthy append low_level_features/low_level_channels for update_low_level_features
             - preset options exclude the last block
             - options:
-                - LowLevelFeatures.ALL: after all blocks
-                - LowLevelFeatures.HALF: at stride = output_stride//2
+                - StrideManager.ALL: after all blocks
+                - StrideManager.HALF: at stride = output_stride//2
                 - A list containing output strides of interest and/or tag-strings
         drop_array<bool>: 
             - if True and len(low-level-outputs)==1 return value instead of array
@@ -87,9 +87,9 @@ class LowLevelFeatures(object):
             if isinstance(self.low_level_output,int):
                 is_low_level_feature=self._check_stride(self.low_level_output)
             elif isinstance(self.low_level_output,str):
-                if self.low_level_output==LowLevelFeatures.ALL:
+                if self.low_level_output==StrideManager.ALL:
                     is_low_level_feature=True
-                elif self.low_level_output==LowLevelFeatures.HALF:
+                elif self.low_level_output==StrideManager.HALF:
                     is_low_level_feature=self._check_stride(self.half_output_stride)
                 else:
                     is_low_level_feature=self.low_level_output==tag
@@ -130,12 +130,17 @@ class LowLevelFeatures(object):
         self._existing_strides=[]
 
 
+    #
+    # INTERNAL
+    #
     def _check_stride(self,stride):
         if isinstance(stride,int):
             if stride not in self._existing_strides:
                 if stride==self.output_stride_state:
                     self._existing_strides.append(stride)
                     return True
+
+
 
 
 #

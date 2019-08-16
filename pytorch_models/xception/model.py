@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import LowLevelFeatures
+from pytorch_models.helpers import StrideManager
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
 
@@ -70,33 +70,33 @@ class Xception(nn.Module):
         self.low_level_output=low_level_output
         self.low_level_drop_array=low_level_drop_array
         self.dropout=dropout
-        llf=LowLevelFeatures(
+        stride_manager=StrideManager(
             self.output_stride,
             self.low_level_output,
             drop_array=self.low_level_drop_array)
         self.entry_block=blocks.EntryBlock(in_ch,entry_ch,entry_out_ch)
-        llf.increment(self.entry_block.output_stride)
+        stride_manager.increment(self.entry_block.output_stride)
         self.xblocks=self._xblocks(
             entry_out_ch,
             xblock_chs,
-            xblock_depth,llf)
+            xblock_depth,stride_manager)
         self.bottleneck=blocks.SeparableStack(
             in_ch=xblock_chs[-1],
             depth=bottleneck_depth,
             res=True,
-            dilation=llf.dilation,
+            dilation=stride_manager.dilation,
             dropout=self.dropout)
         self.exit_xblock=blocks.XBlock(
                 in_ch=xblock_chs[-1],
                 out_ch=exit_xblock_ch,
                 depth=xblock_depth,
-                dilation=llf.dilation,
+                dilation=stride_manager.dilation,
                 dropout=self.dropout)
-        llf.increment(self.exit_xblock.output_stride)
+        stride_manager.increment(self.exit_xblock.output_stride)
         self.exit_stack=blocks.SeparableStack(
             in_ch=exit_xblock_ch,
             out_chs=exit_stack_chs,
-            dilation=llf.dilation,
+            dilation=stride_manager.dilation,
             dropout=self.dropout)
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
@@ -109,20 +109,20 @@ class Xception(nn.Module):
 
 
     def forward(self,x):
-        llf=LowLevelFeatures(
+        stride_manager=StrideManager(
             self.output_stride,
             self.low_level_output,
             drop_array=self.low_level_drop_array)
         x=self.entry_block(x)
-        llf.increment(self.entry_block.output_stride)
-        llf.update_low_level_features(
+        stride_manager.increment(self.entry_block.output_stride)
+        stride_manager.update_low_level_features(
                 x,
                 self.entry_block.out_ch,
                 Xception.LOW_LEVEL_ENTRY)
         for xblock in self.xblocks:
             x=xblock(x)
-            llf.increment(xblock.output_stride)
-            llf.update_low_level_features(
+            stride_manager.increment(xblock.output_stride)
+            stride_manager.update_low_level_features(
                     x,
                     xblock.out_ch,
                     Xception.LOW_LEVEL_XBLOCK)
@@ -131,8 +131,8 @@ class Xception(nn.Module):
         x=self.exit_stack(x)
         if self.classifier_block:
             return self.classifier_block(x)
-        elif llf.low_level_output:
-            return (x, *llf.out())
+        elif stride_manager.low_level_output:
+            return (x, *stride_manager.out())
         else:
             return x
 
@@ -140,36 +140,20 @@ class Xception(nn.Module):
     #
     # INTERNAL
     #
-    def _xblocks(self,in_ch,out_ch_list,depth,llf):
+    def _xblocks(self,in_ch,out_ch_list,depth,stride_manager):
         layers=[]
         for ch in out_ch_list:
             block=blocks.XBlock(
                 in_ch,
                 out_ch=ch,
                 depth=depth,
-                dilation=llf.dilation,
+                dilation=stride_manager.dilation,
                 dropout=self.dropout
             )
             layers.append(block)
-            llf.increment(block.output_stride)
+            stride_manager.increment(block.output_stride)
             in_ch=ch
         return nn.ModuleList(layers)
-
-
-    def _init_stride_state(self):
-        llf.dilation=1
-        self.stride_index=0
-        self.stride_state=None
-        self.at_low_level_stride=False
-
-
-    def _increment_stride_state(self):
-        self.stride_index+=1
-        self.stride_state=(2**self.stride_index)
-        self.at_low_level_stride=(self.stride_state==self.low_level_stride)
-        if self.stride_state>=self.output_stride:
-            llf.dilation*=2
-
 
 
 

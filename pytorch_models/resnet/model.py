@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import LowLevelFeatures
+from pytorch_models.helpers import StrideManager
 from pytorch_models.blocks import Residual, Conv
 from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
@@ -168,21 +168,21 @@ class Resnet(nn.Module):
             shortcut_method,
             low_level_output,
             output_stride)
-        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
+        stride_manager=StrideManager(self.output_stride,self.low_level_output)
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
             in_ch=self.input_conv.out_ch
             self.input_conv_stride=input_conv.get('stride',1)
-            llf.increment(self.input_conv_stride)
+            stride_manager.increment(self.input_conv_stride)
         else:
             self.input_conv=False
         if input_pool:
             self.input_pool=nn.MaxPool2d(**input_pool)
             self.input_pool_stride=input_pool.get('stride',1)
-            llf.increment(self.input_pool_stride)
+            stride_manager.increment(self.input_pool_stride)
         else:
             self.input_pool=False
-        self.blocks=self._blocks(in_ch,blocks,llf)
+        self.blocks=self._blocks(in_ch,blocks,stride_manager)
         self.nb_resnet_blocks=len(self.blocks)
         blocks_out_ch=self.blocks[-1].out_ch
         if nb_classes:
@@ -196,33 +196,33 @@ class Resnet(nn.Module):
 
 
     def forward(self,x):
-        llf=LowLevelFeatures(self.output_stride,self.low_level_output)
+        stride_manager=StrideManager(self.output_stride,self.low_level_output)
         if self.input_conv:
             x=self.input_conv(x)
-            llf.increment(self.input_conv_stride)
-            llf.update_low_level_features(
+            stride_manager.increment(self.input_conv_stride)
+            stride_manager.update_low_level_features(
                 x,
                 self.input_conv.out_ch,
                 Resnet.LOW_LEVEL_INPUT_CONV)
         if self.input_pool:
             x=self.input_pool(x)
-            llf.increment(self.input_pool_stride)
-            llf.update_low_level_features(
+            stride_manager.increment(self.input_pool_stride)
+            stride_manager.update_low_level_features(
                 x,
                 self.input_conv.out_ch,
                 Resnet.LOW_LEVEL_POOL)
         for i,block in enumerate(self.blocks,start=1):
             x=block(x)
-            llf.increment(block.output_stride)
+            stride_manager.increment(block.output_stride)
             if (i!=self.nb_resnet_blocks):
-                llf.update_low_level_features(
+                stride_manager.update_low_level_features(
                     x,
                     block.out_ch,
                     Resnet.LOW_LEVEL_RES)
         if self.classifier_block:
             return self.classifier_block(x)
-        elif llf.low_level_output:
-            return (x, *llf.out())
+        elif stride_manager.low_level_output:
+            return (x, *stride_manager.out())
         else:
             return x
 
@@ -239,19 +239,19 @@ class Resnet(nn.Module):
         self.output_stride=output_stride
 
 
-    def _blocks(self,in_ch,blocks,llf):
+    def _blocks(self,in_ch,blocks,stride_manager):
         layers=[]
         for block in self._blocks_list(blocks):
             block_config, conv_config, output_stride=self._parse_block(block)
-            output_stride=llf.stride(output_stride)
+            output_stride=stride_manager.stride(output_stride)
             rblock=ResBlock(
                 in_ch,
                 output_stride=output_stride,
-                dilation=llf.dilation,
+                dilation=stride_manager.dilation,
                 **block_config,
                 **conv_config)
             layers.append(rblock)
-            llf.increment(output_stride)
+            stride_manager.increment(output_stride)
             in_ch=rblock.out_ch
         return nn.ModuleList(layers)
 
