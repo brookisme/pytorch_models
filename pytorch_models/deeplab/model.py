@@ -5,6 +5,7 @@ from pytorch_models.helpers import output_activation
 from pytorch_models.blocks import Conv
 import pytorch_models.deeplab.blocks as blocks
 from pytorch_models.xception.model import Xception
+from pytorch_models.resnet.model import Resnet
 
 
 
@@ -48,6 +49,7 @@ class DeeplabV3plus(nn.Module):
         out_activation_config<dict>: kwarg-dict for output_activation
     """
     XCEPTION='xception'
+    RESNET='resnet'
     UPMODE='bilinear'
 
 
@@ -102,6 +104,8 @@ class DeeplabV3plus(nn.Module):
     def _backbone(self,backbone,in_ch,backbone_config,out_ch,low_level_out_ch):
         if backbone==DeeplabV3plus.XCEPTION:
             backbone=Xception(in_ch=in_ch,**backbone_config)
+        elif backbone==DeeplabV3plus.RESNET:
+            backbone=Resnet(in_ch=in_ch,**backbone_config)
         elif not isinstance(backbone,nn.Module):
             backbone=None
         if backbone:

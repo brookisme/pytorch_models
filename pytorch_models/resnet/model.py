@@ -5,15 +5,13 @@ from pytorch_models.blocks import Residual, Conv
 from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
-
 #
-# CONSTANTS
+# MODEL CONFIG
 #
-LOW_LEVEL_ERROR='Resnet.low_level_output_strides = {} not implemented'
 _preset_models={
     '18': [
         {   
-            'init_stride': 1,
+            'output_stride': 1,
             'nb_blocks': 2,
             'conv': { 'out_ch': 64, 'depth': 2 }
         },{
@@ -29,7 +27,7 @@ _preset_models={
     ],
     '34': [
         {   
-            'init_stride': 1,
+            'output_stride': 1,
             'nb_blocks': 3,
             'conv': { 'out_ch': 64, 'depth': 3 }
         },{
@@ -45,7 +43,7 @@ _preset_models={
     ],
     '50': [
         {
-            'init_stride': 1,
+            'output_stride': 1,
             'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
@@ -61,7 +59,7 @@ _preset_models={
     ],
     '101': [
         {
-            'init_stride': 1,
+            'output_stride': 1,
             'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
@@ -77,7 +75,7 @@ _preset_models={
     ],
     '152': [
         {
-            'init_stride': 1,
+            'output_stride': 1,
             'nb_blocks': 3,
             'conv': { 'out_chs': [64,64,256], 'kernel_sizes': [1,3,1] }
         },{
@@ -94,6 +92,12 @@ _preset_models={
 
 }
 
+
+
+
+#
+# RESNET MODEL
+#
 class Resnet(nn.Module):
     r""" Resnet https://arxiv.org/pdf/1512.03385.pdf
 
@@ -105,12 +109,25 @@ class Resnet(nn.Module):
             - model configuration key (if int convert to str)
             - resnet-blocks configuration list
         shortcut_method<None|str>
-            - method for managing shortcuts with increasing dimensions. options:
-            - Residual.IDENTITY_SHORTCUT | None: use identity
-            - Residual.ZERO_PADDING_SHORTCUT: add zero padding
-            - Residual.CONV_SHORTCUT: use a 1x1 conv to increase the padding
-        low_level_output_strides<int|list|bool>:
-            *** 
+            - method for managing shortcuts with increasing dimensions
+            - options:
+                - Residual.IDENTITY_SHORTCUT | None: use identity
+                - Residual.ZERO_PADDING_SHORTCUT: add zero padding
+                - Residual.CONV_SHORTCUT: use a 1x1 conv to increase the padding
+        output_stride:
+            - output_stride for output of res-blocks
+            - if output_stride use dilations after output stride is reached
+        low_level_output<int|list|str|False>:
+            - if truthy return low_level_features and low_level_channels
+            - preset options exclude the last block
+            - options:
+                - Resnet.LOW_LEVEL_ALL: after all blocks
+                - Resnet.LOW_LEVEL_RES: after all (downsampling) resnet-blocks
+                - Resnet.LOW_LEVEL_UNET: use for unet ( after input_conv and resblocks )
+                - Resnet.LOW_LEVEL_INPUT_CONV: after input-conv-block
+                - Resnet.LOW_LEVEL_POOL: after input max-pooling
+                - A list containing output strides of interest and/or 
+                  any of the above strings
         dropout<float|bool|None>: 
             * TODO: NOT IMPLEMENTEDED
             - global dropout
@@ -128,6 +145,7 @@ class Resnet(nn.Module):
     DEFUALT_INPUT_POOL={ 'kernel_size': 3, 'stride': 2 }
     LOW_LEVEL_ALL='all'
     LOW_LEVEL_RES='resblock'
+    LOW_LEVEL_UNET='unet'
     LOW_LEVEL_INPUT_CONV='input_conv'
     LOW_LEVEL_POOL='pool'
     #
@@ -139,23 +157,34 @@ class Resnet(nn.Module):
             input_pool=DEFUALT_INPUT_POOL,
             blocks=18,
             shortcut_method=Residual.CONV_SHORTCUT,
-            low_level_output_strides=False,
+            output_stride=None,
+            low_level_output=False,
             dropout=False,
             nb_classes=None,
             classifier='gap',
             classifier_config={}):
         super(Resnet,self).__init__()
-        self._init_properties(in_ch,shortcut_method,low_level_output_strides)
+        self._init_properties(
+            in_ch,
+            shortcut_method,
+            low_level_output,
+            output_stride)
+        self._init_output_stride_state()
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
             in_ch=self.input_conv.out_ch
+            self.input_conv_stride=input_conv.get('stride',1)
+            self._increment_output_stride_state(self.input_conv_stride)
         else:
             self.input_conv=False
         if input_pool:
             self.input_pool=nn.MaxPool2d(**input_pool)
+            self.input_pool_stride=input_pool.get('stride',1)
+            self._increment_output_stride_state(self.input_pool_stride)
         else:
             self.input_pool=False
         self.blocks=self._blocks(in_ch,blocks)
+        self.nb_resnet_blocks=len(self.blocks)
         blocks_out_ch=self.blocks[-1].out_ch
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
@@ -173,17 +202,20 @@ class Resnet(nn.Module):
         low_level_channels=[]
         if self.input_conv:
             x=self.input_conv(x)
+            self._increment_output_stride_state(self.input_conv_stride)
             if self._is_low_level_feature(Resnet.LOW_LEVEL_INPUT_CONV):
                 low_level_features.append(x)
                 low_level_channels.append(self.input_conv.out_ch)
         if self.input_pool:
             x=self.input_pool(x)
+            self._increment_output_stride_state(self.input_pool_stride)
             if self._is_low_level_feature(Resnet.LOW_LEVEL_POOL):
                 low_level_features.append(x)
                 low_level_channels.append(self.input_conv.out_ch)    
-        for block in self.blocks:
+        for i,block in enumerate(self.blocks,start=1):
             x=block(x)
-            if block.output_stride and self._is_low_level_feature(Resnet.LOW_LEVEL_RES):
+            self._increment_output_stride_state(block.output_stride)
+            if (i!=self.nb_resnet_blocks) and self._is_low_level_feature(Resnet.LOW_LEVEL_RES):
                 low_level_features.append(x)
                 low_level_channels.append(block.out_ch)
         if self.classifier_block:
@@ -197,18 +229,29 @@ class Resnet(nn.Module):
     #
     # INTERNAL
     #
-    def _init_properties(self,in_ch,shortcut_method,low_level_output_strides):
+    def _init_properties(self,in_ch,shortcut_method,low_level_output,output_stride):
         self.in_ch=in_ch
         self.default_shortcut_method=shortcut_method
-        self.low_level_output_strides=low_level_output_strides
+        if low_level_output==Resnet.LOW_LEVEL_UNET:
+            low_level_output=[Resnet.LOW_LEVEL_INPUT_CONV,Resnet.LOW_LEVEL_RES]
+        self.low_level_output=low_level_output
+        self.output_stride=output_stride
 
 
     def _blocks(self,in_ch,blocks):
         layers=[]
         for block in self._blocks_list(blocks):
-            block_config, conv_config=self._parse_block(block)
-            rblock=ResBlock(in_ch,**block_config,**conv_config)
+            block_config, conv_config, output_stride=self._parse_block(block)
+            if self.dilation!=1:
+                output_stride=1
+            rblock=ResBlock(
+                in_ch,
+                output_stride=output_stride,
+                dilation=self.dilation,
+                **block_config,
+                **conv_config)
             layers.append(rblock)
+            self._increment_output_stride_state(output_stride)
             in_ch=rblock.out_ch
         return nn.ModuleList(layers)
 
@@ -218,9 +261,9 @@ class Resnet(nn.Module):
         block_config['shortcut_method']=block.get(
             'shortcut_method',
             self.default_shortcut_method)
-        block_config['init_stride']=block.get('init_stride',2)
         conv_config=block_config.pop('conv')
-        return block_config, conv_config
+        output_stride=block_config.pop('output_stride',2)
+        return block_config, conv_config, output_stride
 
 
     def _blocks_list(self,blocks):
@@ -232,26 +275,26 @@ class Resnet(nn.Module):
 
 
     def _init_output_stride_state(self):
-        self.output_stride_index=0
-        self.output_stride_state=None
+        self.output_stride_state=1
+        self.dilation=1
 
 
-    def _increment_output_stride_state(self):
-        self.output_stride_index+=1
-        self.output_stride_state=(2**self.output_stride_index)
+    def _increment_output_stride_state(self,stride=2):
+        self.output_stride_state=self.output_stride_state*stride
+        if self.output_stride and (self.output_stride_state>=self.output_stride):
+            self.dilation*=stride
 
 
     def _is_low_level_feature(self,tag=None):
-        self._increment_output_stride_state()
-        if self.low_level_output_strides:
-            if isinstance(self.low_level_output_strides,int):
-                return self.low_level_output_strides==self.output_stride_state
-            elif isinstance(self.low_level_output_strides,str):
-                return self.low_level_output_strides==tag
+        if self.low_level_output:
+            if isinstance(self.low_level_output,int):
+                return self.low_level_output==self.output_stride_state
+            elif isinstance(self.low_level_output,str):
+                return self.low_level_output==tag
             else:
-                state_is_in=self.output_stride_state in self.low_level_output_strides
+                state_is_in=self.output_stride_state in self.low_level_output
                 if tag:
-                    tag_is_in=tag in self.low_level_output_strides
+                    tag_is_in=tag in self.low_level_output
                     return state_is_in or tag_is_in
                 else:
                     return state_is_in

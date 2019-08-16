@@ -33,7 +33,7 @@ class Conv(nn.Module):
             - the kernel size for each conv
             - if None kernel_sizes=[kernel_size]*len(out_chs)
         stride<int>: 
-            - strid
+            - stride
             - only used if strides is None
         strides<int>: 
             - the strides for each conv
@@ -173,6 +173,8 @@ class Residual(nn.Module):
             - Residual.IDENTITY_SHORTCUT | None: use identity
             - Residual.ZERO_PADDING_SHORTCUT: add zero padding
             - Residual.CONV_SHORTCUT: use a 1x1 conv to increase the padding
+        shortcut_stride<None|int>:
+
         **conv_kwargs:
             - kwargs for Conv bock (see Conv)
             - ignored if <block> is passed   
