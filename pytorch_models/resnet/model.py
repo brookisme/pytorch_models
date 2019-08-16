@@ -223,7 +223,7 @@ class Resnet(nn.Module):
         if self.classifier_block:
             return self.classifier_block(x)
         elif llf.low_level_output:
-            return x, llf.low_level_features, llf.low_level_channels
+            return (x, *llf.out())
         else:
             return x
 

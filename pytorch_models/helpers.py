@@ -16,9 +16,13 @@ DEFAULT_DROPOUT_RATE=0.5
 class LowLevelFeatures(object):
 
 
-    def __init__(self,output_stride=False,low_level_output=False):
+    def __init__(self,
+            output_stride=False,
+            low_level_output=False,
+            drop_array=True):
         self.output_stride=output_stride
         self.low_level_output=low_level_output
+        self.drop_array=True
         self.output_stride_state=1
         self.dilation=1
         self.low_level_features=[]
@@ -54,6 +58,13 @@ class LowLevelFeatures(object):
             if is_low_level_feature:
                 self.low_level_features.append(x)
                 self.low_level_channels.append(ch)
+
+
+    def out(self):
+        if self.drop_array and (len(self.low_level_channels)==1):
+            return self.low_level_features[0], self.low_level_channels[0]
+        else:
+            return self.low_level_features, self.low_level_channels
 
 
     def destroy(self):
