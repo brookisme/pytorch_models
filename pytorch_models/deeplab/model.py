@@ -51,13 +51,17 @@ class DeeplabV3plus(nn.Module):
     XCEPTION='xception'
     RESNET='resnet'
     UPMODE='bilinear'
+    LOW_LEVEL_OUTPUT='half'
 
 
     def __init__(self,
             in_ch,
             out_ch,
             backbone=XCEPTION,
-            backbone_config={},
+            backbone_config={
+                output_stride=16,
+                low_level_output=LOW_LEVEL_OUTPUT
+            },
             backbone_low_level_out_ch=None,
             backbone_out_ch=None,
             aspp_out_ch=256,
