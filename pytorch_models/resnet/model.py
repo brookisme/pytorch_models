@@ -210,17 +210,14 @@ class Resnet(nn.Module):
                 stride=self.input_conv_stride,
                 features=x,
                 tag=Resnet.LOW_LEVEL_INPUT_CONV)
-            print(x.shape)
         if self.input_pool:
             x=self.input_pool(x)
             stride_manager.step(
                 stride=self.input_pool_stride,
                 features=x,
                 tag=Resnet.LOW_LEVEL_POOL)
-            print('p',x.shape)
         for i,block in enumerate(self.blocks,start=1):
             x=block(x)
-            print('-',i,x.shape)
             if (i!=self.nb_resnet_blocks):
                 stride_manager.step(
                     stride=block.output_stride,
