@@ -104,17 +104,26 @@ class StrideManager(object):
                     self.low_level_channels.append(channels)
 
 
-    def out(self,return_channels=False):
-        """ returns low_level_features/channels 
+    def features(self,return_channels=False):
+        """ returns low_level_features 
         * if drop_array=True and if len(low_level_features)==1, return values not arr
+        """
+        if self.drop_array and (len(self.low_level_features)==1):
+            return self.low_level_features[0]
+        else:
+            return self.low_level_features
+
+
+    def channels(self,return_channels=False):
+        """ returns low_level_channels 
+        * if drop_array=True and if len(low_level_channels)==1, return values not arr
         """
         if self.drop_array and (len(self.low_level_channels)==1):
             self.low_level_features=self.low_level_features[0]
-            self.low_level_channels=self.low_level_channels[0]
-        if return_channels:
-            return self.low_level_features, self.low_level_channels
+            return self.low_level_channels[0]
         else:
-            return self.low_level_features
+            return self.low_level_channels
+
 
 
     def reset(self):

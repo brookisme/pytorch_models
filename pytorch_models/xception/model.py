@@ -141,7 +141,7 @@ class Xception(nn.Module):
         if self.classifier_block:
             return self.classifier_block(x)
         elif stride_manager.low_level_output:
-            return x, stride_manager.out()
+            return x, stride_manager.features()
         else:
             return x
 
