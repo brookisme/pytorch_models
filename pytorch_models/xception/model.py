@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import StrideManager
+from pytorch_models.tools import StrideManager
 import pytorch_models.xception.blocks as blocks
 import pytorch_models.classifiers as classifiers
 
@@ -132,7 +132,7 @@ class Xception(nn.Module):
         if self.classifier_block:
             return self.classifier_block(x)
         elif stride_manager.low_level_output:
-            return (x, *stride_manager.out())
+            return x, stride_manager.out()
         else:
             return x
 

@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_models.helpers import StrideManager
+from pytorch_models.tools import StrideManager
 from pytorch_models.blocks import Residual, Conv
 from pytorch_models.resnet.blocks import ResBlock
 import pytorch_models.xception.blocks as blocks
