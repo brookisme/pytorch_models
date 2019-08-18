@@ -46,6 +46,7 @@ class Xception(nn.Module):
     LOW_LEVEL_XBLOCK='xblock'
     LOW_LEVEL_UNET='unet'
     LOW_LEVEL_ENTRY='entry'
+    LOW_LEVEL_EXIT_BLOCK='exit'
     #
     # INSTANCE METHODS
     #
@@ -75,11 +76,15 @@ class Xception(nn.Module):
             self.low_level_output,
             drop_array=self.low_level_drop_array)
         self.entry_block=blocks.EntryBlock(in_ch,entry_ch,entry_out_ch)
-        stride_manager.increment(self.entry_block.output_stride)
+        stride_manager.step(
+            stride=self.entry_block.output_stride,
+            channels=self.entry_block.out_ch,
+            tag=Xception.LOW_LEVEL_ENTRY)
         self.xblocks=self._xblocks(
             entry_out_ch,
             xblock_chs,
-            xblock_depth,stride_manager)
+            xblock_depth,
+            stride_manager)
         self.bottleneck=blocks.SeparableStack(
             in_ch=xblock_chs[-1],
             depth=bottleneck_depth,
@@ -92,12 +97,16 @@ class Xception(nn.Module):
                 depth=xblock_depth,
                 dilation=stride_manager.dilation,
                 dropout=self.dropout)
-        stride_manager.increment(self.exit_xblock.output_stride)
+        stride_manager.step(
+                stride=self.exit_xblock.output_stride,
+                channels=self.exit_xblock.out_ch,
+                tag=Xception.LOW_LEVEL_EXIT_BLOCK)
         self.exit_stack=blocks.SeparableStack(
             in_ch=exit_xblock_ch,
             out_chs=exit_stack_chs,
             dilation=stride_manager.dilation,
             dropout=self.dropout)
+        self.low_level_channels=stride_manager.low_level_channels
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=exit_stack_chs[-1]
@@ -114,18 +123,18 @@ class Xception(nn.Module):
             self.low_level_output,
             drop_array=self.low_level_drop_array)
         x=self.entry_block(x)
-        stride_manager.increment(self.entry_block.output_stride)
-        stride_manager.update_low_level_features(
-                x,
-                self.entry_block.out_ch,
-                Xception.LOW_LEVEL_ENTRY)
+        stride_manager.step(
+            stride=self.entry_block.output_stride,
+            features=x,
+            channels=self.entry_block.out_ch,
+            tag=Xception.LOW_LEVEL_ENTRY)
         for xblock in self.xblocks:
             x=xblock(x)
-            stride_manager.increment(xblock.output_stride)
-            stride_manager.update_low_level_features(
-                    x,
-                    xblock.out_ch,
-                    Xception.LOW_LEVEL_XBLOCK)
+            stride_manager.step(
+                stride=xblock.output_stride,
+                features=x,
+                channels=xblock.out_ch,
+                tag=Xception.LOW_LEVEL_XBLOCK)
         x=self.bottleneck(x)
         x=self.exit_xblock(x)
         x=self.exit_stack(x)
@@ -151,7 +160,10 @@ class Xception(nn.Module):
                 dropout=self.dropout
             )
             layers.append(block)
-            stride_manager.increment(block.output_stride)
+            stride_manager.step(
+                stride=block.output_stride,
+                channels=block.out_ch,
+                tag=Xception.LOW_LEVEL_XBLOCK)
             in_ch=ch
         return nn.ModuleList(layers)
 

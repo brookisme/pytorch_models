@@ -124,7 +124,7 @@ class DeeplabV3plus(nn.Module):
             backbone=None
         if backbone:
             out_ch=out_ch or backbone.out_ch
-            low_level_out_ch=low_level_out_ch or backbone.low_level_out_ch
+            low_level_out_ch=low_level_out_ch or backbone.low_level_channels[0]
             return backbone, out_ch, low_level_out_ch
         else:
             raise NotImplementedError("Currently only supports 'xception' backbone")
