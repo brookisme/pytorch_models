@@ -42,14 +42,6 @@ class StrideManager(object):
         self.reset()
 
 
-    def increment(self,stride=2):
-        """ updates output_stride_state / dilation 
-        """
-        self.output_stride_state=self.output_stride_state*stride
-        if self.output_stride and (self.output_stride_state>=self.output_stride):
-            self.dilation*=stride
-
-
     def stride(self,stride=2):
         """ returns the correct (dilation dependent) stride
         """
@@ -59,7 +51,24 @@ class StrideManager(object):
             return 1
 
 
-    def update_low_level_features(self,x,ch,tag=None):
+    def step(self,stride=2,features=None,channels=None,tag=None):
+        """ combines increment and update_low_level_features """
+        self.increment(stride)
+        self.update_low_level_features(
+            features=features,
+            channels=channels,
+            tag=tag)
+
+
+    def increment(self,stride=2):
+        """ updates output_stride_state / dilation 
+        """
+        self.output_stride_state=self.output_stride_state*stride
+        if self.output_stride and (self.output_stride_state>=self.output_stride):
+            self.dilation*=stride
+
+
+    def update_low_level_features(self,features=None,channels=None,tag=None):
         """
 
         Checks current output_stride_state and tag to see if it is equal to
@@ -89,8 +98,10 @@ class StrideManager(object):
                 else:
                     is_low_level_feature=state_is_in
             if is_low_level_feature:
-                self.low_level_features.append(x)
-                self.low_level_channels.append(ch)
+                if features is not None: 
+                    self.low_level_features.append(features)
+                if channels is not None: 
+                    self.low_level_channels.append(channels)
 
 
     def out(self,return_channels=False):
