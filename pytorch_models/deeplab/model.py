@@ -16,8 +16,6 @@ class DeeplabV3plus(nn.Module):
         in_ch<int>: Number of channels in input
         out_ch<int|None>: 
             - number of channels in output
-            - if out_conv_config, specifying out_conv_config['out_ch'] 
-              can be used to change final number of output channels
         backbone<str>: 
             - name of backbone
             - one of ['xception']
@@ -29,7 +27,11 @@ class DeeplabV3plus(nn.Module):
             - if None attempts to get value from backbone-instance
         backbone_out_ch<int>:
             - out_ch from backbone
-            - if None attempts to get value from backbone-instance        aspp_out_ch=256,
+            - if None attempts to get value from backbone-instance        
+        reduced_low_level_out_ch: 
+            - the number of channels to reduce low-level-features to
+            - before concatenation
+        aspp_out_ch=256,
         aspp_out_ch<int>: number of out_channels from ASPP block
         aspp_config<dict>:
             - kwarg-dict from aspp block
@@ -39,9 +41,10 @@ class DeeplabV3plus(nn.Module):
             - if not None overrides dropout in backbone/aspp_config
             - if is True dropout=0.5
         upsample_mode<str>: upsampling mode
-        out_conv_config<dict|False>:
+        refinement_conv_depth<int>:
+            - depth for refinement_conv block
+        refinement_conv_config<dict>:
             - kwarg-dict for Conv block
-            - False for no out_conv
         out_activation<str|func|False|None>: 
             - activation method or method name
             - False: No output activation
@@ -59,16 +62,18 @@ class DeeplabV3plus(nn.Module):
             out_ch,
             backbone=XCEPTION,
             backbone_config={
-                output_stride=16,
-                low_level_output=LOW_LEVEL_OUTPUT
+                'output_stride': 16,
+                'low_level_output': LOW_LEVEL_OUTPUT
             },
             backbone_low_level_out_ch=None,
             backbone_out_ch=None,
+            reduced_low_level_out_ch=128,
             aspp_out_ch=256,
             aspp_config={},
             dropout=None,
             upsample_mode=UPMODE,
-            out_conv_config=False,
+            refinement_conv_depth=2,
+            refinement_conv_config={},
             out_activation=False,
             out_activation_config={}):
         super(DeeplabV3plus,self).__init__()
@@ -84,10 +89,15 @@ class DeeplabV3plus(nn.Module):
             backbone_low_level_out_ch)
         self.aspp=blocks.ASPP(in_ch=backbone_out_ch,out_ch=aspp_out_ch,**aspp_config)
         self.channel_reducer=nn.Conv2d(
-            in_channels=aspp_out_ch+backbone_low_level_out_ch,
-            out_channels=out_ch,
+            in_channels=backbone_low_level_out_ch,
+            out_channels=reduced_low_level_out_ch,
             kernel_size=1)
-        self.out_conv=self._out_conv(out_ch,dropout,out_conv_config)
+        self.refinement_conv=self._refinement_conv(
+            aspp_out_ch+reduced_low_level_out_ch,
+            out_ch,
+            dropout,
+            refinement_conv_depth,
+            refinement_conv_config)
         self.act=output_activation(out_activation,out_activation_config)
 
 
@@ -95,11 +105,11 @@ class DeeplabV3plus(nn.Module):
         x,lowx=self.backbone(x)
         x=self.aspp(x)
         x=self._up(x)
+        lowx=self.channel_reducer(lowx)
         x=torch.cat([x,lowx],dim=1)
-        x=self.channel_reducer(x)
+        if self.refinement_conv:
+            x=self.refinement_conv(x)
         x=self._up(x)
-        if self.out_conv:
-            x=self.out_conv(x)
         if self.act:
             x=self.act(x)
         return x
@@ -120,12 +130,17 @@ class DeeplabV3plus(nn.Module):
             raise NotImplementedError("Currently only supports 'xception' backbone")
 
 
-    def _out_conv(self,in_ch,dropout,config):
-        if config is not False:
-            if confg.get('dropout') is None:
+    def _refinement_conv(self,in_ch,out_ch,dropout,depth,config):
+        if depth:
+            if config.get('dropout') is None:
                 config['dropout']=dropout
+            if config.get('depth') is None:
+                config['depth']=depth
             config['in_ch']=in_ch
+            config['out_ch']=out_ch
             return Conv(**config)
+        else:
+            return False
 
 
     def _up(self,x,scale_factor=4):
