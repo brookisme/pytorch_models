@@ -36,7 +36,10 @@ class StrideManager(object):
             low_level_output=False,
             drop_array=True):
         self.output_stride=output_stride
-        self.half_output_stride=int(round(math.sqrt(output_stride)))
+        if output_stride:
+            self.half_output_stride=int(round(math.sqrt(output_stride)))
+        else:
+            self.half_output_stride=False
         self.low_level_output=low_level_output
         self.drop_array=drop_array
         self.reset()

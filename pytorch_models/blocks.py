@@ -212,7 +212,7 @@ class Residual(nn.Module):
 
 
     def forward(self, x):
-        return self.shortcut(self._zpad(x)).add_(self.block(x))
+        return self.shortcut(self._zpad(x)).add(self.block(x))
 
 
     def _set_shortcut(self,shortcut_stride):
