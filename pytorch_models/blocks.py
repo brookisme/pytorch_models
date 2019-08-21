@@ -90,6 +90,8 @@ class Conv(nn.Module):
             strides=[stride]*len(out_chs)
         if dropout is True:
             dropout=DEFAULT_DROPOUT_RATE
+        elif dropout is None:
+            dropout=False
         self.padding=padding
         self.conv_blocks=self._conv_blocks(
             in_ch,
@@ -297,6 +299,8 @@ class Dense(nn.Module):
             out_chs=[out_ch]*depth
         if dropout is True:
             dropout=DEFAULT_DROPOUT_RATE
+        elif dropout is None:
+            dropout=False
         self.out_ch=out_chs[-1]
         self.dense_blocks=self._dense_blocks(
             self.in_ch,
