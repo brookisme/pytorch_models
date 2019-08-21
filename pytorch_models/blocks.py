@@ -88,6 +88,8 @@ class Conv(nn.Module):
             kernel_sizes=[kernel_size]*len(out_chs)
         if strides is None:
             strides=[stride]*len(out_chs)
+        if dropout is True:
+            dropout=DEFAULT_DROPOUT_RATE
         self.padding=padding
         self.conv_blocks=self._conv_blocks(
             in_ch,
@@ -134,8 +136,7 @@ class Conv(nn.Module):
                 layers.append(nn.BatchNorm2d(ch))
             if act:
                 layers.append(activation(act=act,**act_config))
-            if dropout:
-                layers.append(nn.Dropout2d(p=dropout))
+            layers.append(nn.Dropout2d(p=dropout))
             in_ch=ch
         return nn.Sequential(*layers)
 
@@ -335,8 +336,7 @@ class Dense(nn.Module):
                 layers.append(nn.BatchNorm1d(ch))
             if act and (last_act or (i!=nb_dense)):
                 layers.append(activation(act=act,**act_config))
-            if dropout:
-                layers.append(nn.Dropout2d(p=dropout))
+            layers.append(nn.Dropout2d(p=dropout))
             in_ch=ch
         return nn.Sequential(*layers)
 
