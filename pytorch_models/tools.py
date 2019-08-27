@@ -1,4 +1,5 @@
 import math
+import numpy as np
 #
 # StrideManager
 #
@@ -34,13 +35,15 @@ class StrideManager(object):
     def __init__(self,
             output_stride=False,
             low_level_output=False,
-            drop_array=True):
+            drop_array=False):
         self.output_stride=output_stride
+        self.low_level_output=low_level_output
         if output_stride:
             self.half_output_stride=int(round(math.sqrt(output_stride)))
+            self.scale_factors=self._scale_factors()
         else:
             self.half_output_stride=False
-        self.low_level_output=low_level_output
+            self.scale_factors=False
         self.drop_array=drop_array
         self.reset()
 
@@ -107,25 +110,24 @@ class StrideManager(object):
                     self.low_level_channels.append(channels)
 
 
-    def features(self,return_channels=False):
+    def features(self):
         """ returns low_level_features 
         * if drop_array=True and if len(low_level_features)==1, return values not arr
         """
         if self.drop_array and (len(self.low_level_features)==1):
             return self.low_level_features[0]
         else:
-            return self.low_level_features
+            return self.low_level_features[::-1]
 
 
-    def channels(self,return_channels=False):
+    def channels(self):
         """ returns low_level_channels 
         * if drop_array=True and if len(low_level_channels)==1, return values not arr
         """
         if self.drop_array and (len(self.low_level_channels)==1):
-            self.low_level_features=self.low_level_features[0]
             return self.low_level_channels[0]
         else:
-            return self.low_level_channels
+            return self.low_level_channels[::-1]
 
 
 
@@ -147,6 +149,24 @@ class StrideManager(object):
     #
     # INTERNAL
     #
+    def _scale_factors(self):
+        if self.low_level_output==StrideManager.HALF:
+            return [self.half_output_stride]
+        else:
+            test=[isinstance(s,int) for s in self.low_level_output]
+            if np.array(test).all():
+                os=self.output_stride
+                strides=[1]+self.low_level_output
+                sfactors=[]
+                for s in strides[::-1]:
+                    sfactors.append(os/s)
+                    os=s
+                return sfactors
+            else:
+                print('WARNING: scale_factors not set. low_level_output must be ints')
+                return False
+
+
     def _check_stride(self,stride):
         if isinstance(stride,int):
             if stride not in self._existing_strides:

@@ -191,7 +191,8 @@ class Resnet(nn.Module):
         self.blocks=self._blocks(in_ch,blocks,stride_manager)
         self.nb_resnet_blocks=len(self.blocks)
         blocks_out_ch=self.blocks[-1].out_ch
-        self.low_level_channels=stride_manager.low_level_channels
+        self.low_level_channels=stride_manager.channels()
+        self.scale_factors=stride_manager.scale_factors
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=blocks_out_ch

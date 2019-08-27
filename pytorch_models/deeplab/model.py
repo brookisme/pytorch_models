@@ -22,8 +22,8 @@ class DeeplabV3plus(nn.Module):
         backbone_config<dict>:
             - kwarg-dict for backbone
             - in_ch set explicitly above
-        backbone_low_level_out_ch<int|None>:
-            - out_ch for low_level_features in backbone
+        self.low_level_out_chs<int|None>:
+            - out_chs for low_level_features in backbone
             - if None attempts to get value from backbone-instance
         backbone_out_ch<int>:
             - out_ch from backbone
@@ -55,6 +55,7 @@ class DeeplabV3plus(nn.Module):
     RESNET='resnet'
     UPMODE='bilinear'
     LOW_LEVEL_OUTPUT='half'
+    NOT_IMPLEMENTED="Currently only supports 'xception' and 'resnet' backbone"
 
 
     def __init__(self,
@@ -65,7 +66,8 @@ class DeeplabV3plus(nn.Module):
                 'output_stride': 16,
                 'low_level_output': LOW_LEVEL_OUTPUT
             },
-            backbone_low_level_out_ch=None,
+            backbone_low_level_out_chs=None,
+            backbone_scale_factors=None,
             backbone_out_ch=None,
             reduced_low_level_out_ch=128,
             aspp_out_ch=256,
@@ -81,17 +83,15 @@ class DeeplabV3plus(nn.Module):
         if dropout is not None:
             backbone_config['dropout']=dropout
             aspp_config['dropout']=dropout
-        self.backbone,backbone_out_ch,backbone_low_level_out_ch=self._backbone(
+        self.backbone,bb_out_ch,self.low_level_out_chs,self.scale_factors=self._backbone(
             backbone,
             in_ch,
             backbone_config,
             backbone_out_ch,
-            backbone_low_level_out_ch)
-        self.aspp=blocks.ASPP(in_ch=backbone_out_ch,out_ch=aspp_out_ch,**aspp_config)
-        self.channel_reducer=nn.Conv2d(
-            in_channels=backbone_low_level_out_ch,
-            out_channels=reduced_low_level_out_ch,
-            kernel_size=1)
+            backbone_low_level_out_chs,
+            backbone_scale_factors)
+        self.aspp=blocks.ASPP(in_ch=bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
+        self.reducers=self._reducers(reduced_low_level_out_ch)
         self.refinement_conv=self._refinement_conv(
             aspp_out_ch+reduced_low_level_out_ch,
             out_ch,
@@ -101,21 +101,42 @@ class DeeplabV3plus(nn.Module):
         self.act=output_activation(out_activation,out_activation_config)
 
 
+    def _reducers(self,reduced_low_level_out_ch):
+        reducers=[]
+        for out_ch in self.low_level_out_chs:
+            reducers.append(nn.Conv2d(
+                in_channels=out_ch,
+                out_channels=reduced_low_level_out_ch,
+                kernel_size=1))
+        return nn.ModuleList(reducers)
+
+            
     def forward(self,x):
-        x,lowx=self.backbone(x)
+        x,lowxs=self.backbone(x)
         x=self.aspp(x)
-        x=self._up(x)
-        lowx=self.channel_reducer(lowx)
-        x=torch.cat([x,lowx],dim=1)
+        for lx,ch,r,sf in zip(
+                lowxs,
+                self.low_level_out_chs,
+                self.reducers,
+                self.scale_factors[:-1]):
+            x=self._up(x,scale_factor=sf)
+            lx=r(lx)
+            x=torch.cat([x,lx],dim=1)
         if self.refinement_conv:
             x=self.refinement_conv(x)
-        x=self._up(x)
+        x=self._up(x,scale_factor=self.scale_factors[-1])
         if self.act:
             x=self.act(x)
         return x
 
 
-    def _backbone(self,backbone,in_ch,backbone_config,out_ch,low_level_out_ch):
+    def _backbone(self,
+            backbone,
+            in_ch,
+            backbone_config,
+            out_ch,
+            low_level_out_chs,
+            scale_factors):
         if backbone==DeeplabV3plus.XCEPTION:
             backbone=Xception(in_ch=in_ch,**backbone_config)
         elif backbone==DeeplabV3plus.RESNET:
@@ -124,10 +145,11 @@ class DeeplabV3plus(nn.Module):
             backbone=None
         if backbone:
             out_ch=out_ch or backbone.out_ch
-            low_level_out_ch=low_level_out_ch or backbone.low_level_channels[0]
-            return backbone, out_ch, low_level_out_ch
+            low_level_out_chs=low_level_out_chs or backbone.low_level_channels
+            scale_factors=scale_factors or backbone.scale_factors
+            return backbone, out_ch, low_level_out_chs, scale_factors
         else:
-            raise NotImplementedError("Currently only supports 'xception' backbone")
+            raise NotImplementedError(NOT_IMPLEMENTED)
 
 
     def _refinement_conv(self,in_ch,out_ch,dropout,depth,config):
