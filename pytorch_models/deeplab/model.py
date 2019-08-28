@@ -10,7 +10,11 @@ from pytorch_models.resnet.model import Resnet
 
 
 class DeeplabV3plus(nn.Module):
-    r""" DeeplabV3+
+    r""" (*) DeeplabV3+
+
+    * Defaults reproduced DeeplabV3+
+    - can add more upsampling steps
+    - can add a final "refinement_conv" after last upsampling
 
     Args:
         in_ch<int>: Number of channels in input
@@ -57,10 +61,14 @@ class DeeplabV3plus(nn.Module):
     LOW_LEVEL_OUTPUT='half'
     NOT_IMPLEMENTED="Currently only supports 'xception' and 'resnet' backbone"
 
-
+    """TODO
+    - bb_out
+    - fix out_chs 
+    """
     def __init__(self,
             in_ch,
             out_ch,
+            out_chs=None,
             backbone=XCEPTION,
             backbone_config={
                 'output_stride': 16,
@@ -69,7 +77,7 @@ class DeeplabV3plus(nn.Module):
             backbone_low_level_out_chs=None,
             backbone_scale_factors=None,
             backbone_out_ch=None,
-            reduced_low_level_out_ch=128,
+            reduced_low_level_out_chs=[128],
             aspp_out_ch=256,
             aspp_config={},
             dropout=None,
@@ -91,45 +99,45 @@ class DeeplabV3plus(nn.Module):
             backbone_low_level_out_chs,
             backbone_scale_factors)
         self.aspp=blocks.ASPP(in_ch=bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
-        self.reducers=self._reducers(reduced_low_level_out_ch)
-        self.refinement_conv=self._refinement_conv(
-            aspp_out_ch+reduced_low_level_out_ch,
+        reduced_low_level_out_chs=reduced_low_level_out_chs[::-1]
+        self.reducers=self._reducers(reduced_low_level_out_chs)
+        self.refinement_convs=self._refinement_convs(
+            aspp_out_ch,
+            self.low_level_out_chs,
+            reduced_low_level_out_chs,
             out_ch,
+            out_chs,
             dropout,
             refinement_conv_depth,
             refinement_conv_config)
         self.act=output_activation(out_activation,out_activation_config)
 
-
-    def _reducers(self,reduced_low_level_out_ch):
-        reducers=[]
-        for out_ch in self.low_level_out_chs:
-            reducers.append(nn.Conv2d(
-                in_channels=out_ch,
-                out_channels=reduced_low_level_out_ch,
-                kernel_size=1))
-        return nn.ModuleList(reducers)
-
             
     def forward(self,x):
         x,lowxs=self.backbone(x)
         x=self.aspp(x)
-        for lx,ch,r,sf in zip(
+        for lx,ch,red,sf,ref in zip(
                 lowxs,
                 self.low_level_out_chs,
                 self.reducers,
-                self.scale_factors[:-1]):
+                self.scale_factors[:-1],
+                self.refinement_convs):
             x=self._up(x,scale_factor=sf)
-            lx=r(lx)
+            lx=red(lx)
             x=torch.cat([x,lx],dim=1)
-        if self.refinement_conv:
-            x=self.refinement_conv(x)
-        x=self._up(x,scale_factor=self.scale_factors[-1])
+            if ref:
+                x=ref(x)
+        if self.scale_factors[-1]>1:
+            x=self._up(x,scale_factor=self.scale_factors[-1])
         if self.act:
             x=self.act(x)
         return x
 
 
+
+    #
+    # INTERNAL
+    #
     def _backbone(self,
             backbone,
             in_ch,
@@ -152,17 +160,41 @@ class DeeplabV3plus(nn.Module):
             raise NotImplementedError(NOT_IMPLEMENTED)
 
 
-    def _refinement_conv(self,in_ch,out_ch,dropout,depth,config):
-        if depth:
-            if config.get('dropout') is None:
-                config['dropout']=dropout
-            if config.get('depth') is None:
-                config['depth']=depth
-            config['in_ch']=in_ch
-            config['out_ch']=out_ch
-            return Conv(**config)
-        else:
-            return False
+    def _reducers(self,reduced_low_level_out_chs):
+        reducers=[]
+        for in_ch,out_ch in zip(self.low_level_out_chs,reduced_low_level_out_chs):
+            reducers.append(nn.Conv2d(
+                in_channels=in_ch,
+                out_channels=out_ch,
+                kernel_size=1))
+        return nn.ModuleList(reducers)
+
+
+    def _refinement_convs(self,
+            encoder_out_ch,
+            ll_outs,
+            red_outs,
+            out_ch,
+            out_chs,
+            dropout,
+            depth,
+            config):
+        refiners=[]
+        if config.get('dropout') is None:
+            config['dropout']=dropout
+        if config.get('depth') is None:
+            config['depth']=depth
+        if not out_chs:
+            out_chs=[out_ch]*len(ll_outs)
+        feat_ins=[encoder_out_ch]+out_chs[:-1]
+        rl_outs=[ r or l for r,l in zip(red_outs,ll_outs)]
+        in_chs=[ f+rl for f,rl in zip(feat_ins,rl_outs)]
+        for in_ch,out_ch in zip(in_chs,out_chs):
+            if out_ch:
+                refiners.append(Conv(in_ch=in_ch,out_ch=out_ch,**config))
+            else:
+                refiners.append(False)
+        return nn.ModuleList(refiners)
 
 
     def _up(self,x,scale_factor=4):
