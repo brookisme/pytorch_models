@@ -101,8 +101,6 @@ class DeeplabV3plus(nn.Module):
             backbone_scale_factors)
         self.aspp=blocks.ASPP(in_ch=self.bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
         reducer_chs=self._reducer_chs(reduced_low_level_out_chs,reducer_ch_reduction)
-        print('llch,r',self.low_level_out_chs,reducer_ch_reduction)
-        print('rch',reducer_chs)
         self.reducers=self._reducers(reducer_chs)
         self.refinement_convs=self._refinement_convs(
             aspp_out_ch,
@@ -117,38 +115,21 @@ class DeeplabV3plus(nn.Module):
 
             
     def forward(self,x):
-        print('='*100)
-        print('in',x.shape)
         x,lowxs=self.backbone(x)
-        print('bb',x.shape,len(lowxs))
         x=self.aspp(x)
-        print(
-            len(lowxs),
-            len(self.low_level_out_chs),
-            len(self.reducers),
-            len(self.scale_factors[:-1]),
-            len(self.refinement_convs),
-        )
         for lx,ch,red,sf,ref in zip(
                 lowxs,
                 self.low_level_out_chs,
                 self.reducers,
                 self.scale_factors[:-1],
-                self.refinement_convs):
-            print('-------')
-            print('\txlx-in',x.shape,lx.shape)
-            print('\tch,sf',ch,sf)            
+                self.refinement_convs):          
             x=self._up(x,scale_factor=sf)
             lx=red(lx)
-            print('\txlx-upred',x.shape,lx.shape)
             x=torch.cat([x,lx],dim=1)
-            print('\tcat',x.shape)
             if ref:
                 x=ref(x)
-                print('\tref',x.shape)
         if self.scale_factors[-1]>1:
             x=self._up(x,scale_factor=self.scale_factors[-1])
-            print('up',x.shape)
         if self.act:
             x=self.act(x)
         return x

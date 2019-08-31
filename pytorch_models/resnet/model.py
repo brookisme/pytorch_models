@@ -168,7 +168,6 @@ class Resnet(nn.Module):
         super(Resnet,self).__init__()
         self.in_ch=in_ch
         self.default_shortcut_method=shortcut_method
-        print(output_stride,indices,stride_states,tags)
         self.stride_manager=StrideManager(output_stride,indices,tags,stride_states)
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
@@ -206,25 +205,20 @@ class Resnet(nn.Module):
 
     def forward(self,x):
         features=[]
-
         self.stride_manager.start()
         if self.input_conv:
             x=self.input_conv(x)
             if self.stride_manager.step():
                 features.append(x)
-
         if self.input_pool:
             x=self.input_pool(x)
             if self.stride_manager.step():
                 features.append(x)
-
         for i,block in enumerate(self.blocks,start=1):
             x=block(x)
             if (i!=self.nb_resnet_blocks):
-                tag="{}_{}".format(Resnet.LOW_LEVEL_RES,i)
                 if self.stride_manager.step():
                     features.append(x)
-
         if self.classifier_block:
             return self.classifier_block(x)
         elif features:

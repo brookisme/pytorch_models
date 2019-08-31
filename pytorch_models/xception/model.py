@@ -53,8 +53,9 @@ class Xception(nn.Module):
     def __init__(self,
             in_ch,
             output_stride=None,
-            low_level_output=False,
-            low_level_drop_array=True,
+            indices=None,
+            stride_states=None,
+            tags=None,
             entry_ch=32,
             entry_out_ch=64,
             xblock_chs=[128,256,728],
@@ -67,47 +68,40 @@ class Xception(nn.Module):
             classifier='gap',
             classifier_config={}):
         super(Xception,self).__init__()
-        self.output_stride=output_stride
-        self.low_level_output=low_level_output
-        self.low_level_drop_array=low_level_drop_array
         self.dropout=dropout
-        stride_manager=StrideManager(
-            self.output_stride,
-            self.low_level_output,
-            drop_array=self.low_level_drop_array)
+        self.stride_manager=StrideManager(output_stride,indices,tags,stride_states)
         self.entry_block=blocks.EntryBlock(in_ch,entry_ch,entry_out_ch)
-        stride_manager.step(
-            stride=self.entry_block.output_stride,
+        self.stride_manager.update(
             channels=self.entry_block.out_ch,
+            stride=self.entry_block.output_stride,
             tag=Xception.LOW_LEVEL_ENTRY)
         self.xblocks=self._xblocks(
             entry_out_ch,
             xblock_chs,
-            xblock_depth,
-            stride_manager)
+            xblock_depth)
         self.bottleneck=blocks.SeparableStack(
             in_ch=xblock_chs[-1],
             depth=bottleneck_depth,
             res=True,
-            dilation=stride_manager.dilation,
+            dilation=self.stride_manager.dilation,
             dropout=self.dropout)
         self.exit_xblock=blocks.XBlock(
                 in_ch=xblock_chs[-1],
                 out_ch=exit_xblock_ch,
                 depth=xblock_depth,
-                dilation=stride_manager.dilation,
+                dilation=self.stride_manager.dilation,
                 dropout=self.dropout)
-        stride_manager.step(
-                stride=self.exit_xblock.output_stride,
+        self.stride_manager.update(
                 channels=self.exit_xblock.out_ch,
+                stride=self.exit_xblock.output_stride,
                 tag=Xception.LOW_LEVEL_EXIT_BLOCK)
         self.exit_stack=blocks.SeparableStack(
             in_ch=exit_xblock_ch,
             out_chs=exit_stack_chs,
-            dilation=stride_manager.dilation,
+            dilation=self.stride_manager.dilation,
             dropout=self.dropout)
-        self.low_level_channels=stride_manager.channels()
-        self.scale_factors=stride_manager.scale_factors
+        self.low_level_channels=self.stride_manager.channels()
+        self.scale_factors=self.stride_manager.scale_factors()
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=exit_stack_chs[-1]
@@ -119,30 +113,24 @@ class Xception(nn.Module):
 
 
     def forward(self,x):
-        stride_manager=StrideManager(
-            self.output_stride,
-            self.low_level_output,
-            drop_array=self.low_level_drop_array)
+        features=[]
+        self.stride_manager.start()
         x=self.entry_block(x)
-        stride_manager.step(
-            stride=self.entry_block.output_stride,
-            features=x,
-            channels=self.entry_block.out_ch,
-            tag=Xception.LOW_LEVEL_ENTRY)
+        if self.stride_manager.step():
+            features.append(x)
         for xblock in self.xblocks:
             x=xblock(x)
-            stride_manager.step(
-                stride=xblock.output_stride,
-                features=x,
-                channels=xblock.out_ch,
-                tag=Xception.LOW_LEVEL_XBLOCK)
+            if self.stride_manager.step():
+                features.append(x)
         x=self.bottleneck(x)
         x=self.exit_xblock(x)
+        if self.stride_manager.step():
+            features.append(x)
         x=self.exit_stack(x)
         if self.classifier_block:
             return self.classifier_block(x)
-        elif stride_manager.low_level_output:
-            return x, stride_manager.features()
+        elif features:
+            return x, features[::-1]
         else:
             return x
 
@@ -150,21 +138,22 @@ class Xception(nn.Module):
     #
     # INTERNAL
     #
-    def _xblocks(self,in_ch,out_ch_list,depth,stride_manager):
+    def _xblocks(self,in_ch,out_ch_list,depth):
         layers=[]
-        for ch in out_ch_list:
+        for i,ch in enumerate(out_ch_list):
             block=blocks.XBlock(
                 in_ch,
                 out_ch=ch,
                 depth=depth,
-                dilation=stride_manager.dilation,
+                dilation=self.stride_manager.dilation,
                 dropout=self.dropout
             )
             layers.append(block)
-            stride_manager.step(
-                stride=block.output_stride,
+            tag="{}_{}".format(Xception.LOW_LEVEL_XBLOCK,i)
+            self.stride_manager.update(
                 channels=block.out_ch,
-                tag=Xception.LOW_LEVEL_XBLOCK)
+                stride=block.output_stride,
+                tag=tag)
             in_ch=ch
         return nn.ModuleList(layers)
 
