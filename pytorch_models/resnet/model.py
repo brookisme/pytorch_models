@@ -117,6 +117,8 @@ class Resnet(nn.Module):
         output_stride:
             - output_stride for output of res-blocks
             - if output_stride use dilations after output stride is reached
+        low_level_nb_steps:
+            - ...
         low_level_output<int|list|str|False>:
             - if truthy return low_level_features and low_level_channels
             - preset options exclude the last block
@@ -144,7 +146,6 @@ class Resnet(nn.Module):
     DEFAULT_INPUT_CONV={ 'out_ch': 64, 'kernel_size': 7, 'stride': 2 }
     DEFUALT_INPUT_POOL={ 'kernel_size': 3, 'stride': 2, 'padding': 1 }
     LOW_LEVEL_RES='resblock'
-    LOW_LEVEL_UNET='unet'
     LOW_LEVEL_INPUT_CONV='input_conv'
     LOW_LEVEL_POOL='pool'
     #
@@ -157,42 +158,42 @@ class Resnet(nn.Module):
             blocks=18,
             shortcut_method=Residual.CONV_SHORTCUT,
             output_stride=None,
-            low_level_output=False,
+            indices=None,
+            stride_states=None,
+            tags=None,
             dropout=False,
             nb_classes=None,
             classifier='gap',
             classifier_config={}):
         super(Resnet,self).__init__()
-        self._init_properties(
-            in_ch,
-            shortcut_method,
-            low_level_output,
-            output_stride)
-        stride_manager=StrideManager(self.output_stride,self.low_level_output)
+        self.in_ch=in_ch
+        self.default_shortcut_method=shortcut_method
+        print(output_stride,indices,stride_states,tags)
+        self.stride_manager=StrideManager(output_stride,indices,tags,stride_states)
         if input_conv:
             self.input_conv=Conv(in_ch,**input_conv)
             in_ch=self.input_conv.out_ch
             self.input_conv_stride=input_conv.get('stride',1)
-            stride_manager.step(
-                stride=self.input_conv_stride,
+            self.stride_manager.update(
                 channels=self.input_conv.out_ch,
+                stride=self.input_conv_stride,
                 tag=Resnet.LOW_LEVEL_INPUT_CONV)
         else:
             self.input_conv=False
         if input_pool:
             self.input_pool=nn.MaxPool2d(**input_pool)
             self.input_pool_stride=input_pool.get('stride',1)
-            stride_manager.step(
-                stride=self.input_pool_stride,
+            self.stride_manager.update(
                 channels=self.input_conv.out_ch,
+                stride=self.input_pool_stride,
                 tag=Resnet.LOW_LEVEL_POOL)
         else:
             self.input_pool=False
-        self.blocks=self._blocks(in_ch,blocks,stride_manager)
+        self.blocks=self._blocks(in_ch,blocks)
         self.nb_resnet_blocks=len(self.blocks)
         blocks_out_ch=self.blocks[-1].out_ch
-        self.low_level_channels=stride_manager.channels()
-        self.scale_factors=stride_manager.scale_factors
+        self.low_level_channels=self.stride_manager.channels()
+        self.scale_factors=self.stride_manager.scale_factors()
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=blocks_out_ch
@@ -204,30 +205,30 @@ class Resnet(nn.Module):
 
 
     def forward(self,x):
-        stride_manager=StrideManager(self.output_stride,self.low_level_output)
+        features=[]
+
+        self.stride_manager.start()
         if self.input_conv:
             x=self.input_conv(x)
-            stride_manager.step(
-                stride=self.input_conv_stride,
-                features=x,
-                tag=Resnet.LOW_LEVEL_INPUT_CONV)
+            if self.stride_manager.step():
+                features.append(x)
+
         if self.input_pool:
             x=self.input_pool(x)
-            stride_manager.step(
-                stride=self.input_pool_stride,
-                features=x,
-                tag=Resnet.LOW_LEVEL_POOL)
+            if self.stride_manager.step():
+                features.append(x)
+
         for i,block in enumerate(self.blocks,start=1):
             x=block(x)
             if (i!=self.nb_resnet_blocks):
-                stride_manager.step(
-                    stride=block.output_stride,
-                    features=x,
-                    tag=Resnet.LOW_LEVEL_RES)
+                tag="{}_{}".format(Resnet.LOW_LEVEL_RES,i)
+                if self.stride_manager.step():
+                    features.append(x)
+
         if self.classifier_block:
             return self.classifier_block(x)
-        elif stride_manager.low_level_output:
-            return x, stride_manager.features()
+        elif features:
+            return x, features[::-1]
         else:
             return x
 
@@ -235,31 +236,23 @@ class Resnet(nn.Module):
     #
     # INTERNAL
     #
-    def _init_properties(self,in_ch,shortcut_method,low_level_output,output_stride):
-        self.in_ch=in_ch
-        self.default_shortcut_method=shortcut_method
-        if low_level_output==Resnet.LOW_LEVEL_UNET:
-            low_level_output=[Resnet.LOW_LEVEL_INPUT_CONV,Resnet.LOW_LEVEL_RES]
-        self.low_level_output=low_level_output
-        self.output_stride=output_stride
-
-
-    def _blocks(self,in_ch,blocks,stride_manager):
+    def _blocks(self,in_ch,blocks):
         layers=[]
-        for block in self._blocks_list(blocks):
+        for i,block in enumerate(self._blocks_list(blocks)):
             block_config, conv_config, output_stride=self._parse_block(block)
-            output_stride=stride_manager.stride(output_stride)
+            output_stride=self.stride_manager.stride(output_stride)
             rblock=ResBlock(
                 in_ch,
                 output_stride=output_stride,
-                dilation=stride_manager.dilation,
+                dilation=self.stride_manager.dilation,
                 **block_config,
                 **conv_config)
             layers.append(rblock)
-            stride_manager.step(
-                stride=rblock.output_stride,
+            tag="{}_{}".format(Resnet.LOW_LEVEL_RES,i)
+            self.stride_manager.update(
                 channels=rblock.out_ch,
-                tag=Resnet.LOW_LEVEL_RES)
+                stride=rblock.output_stride,
+                tag=tag)
             in_ch=rblock.out_ch
         return nn.ModuleList(layers)
 

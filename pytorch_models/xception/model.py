@@ -106,7 +106,8 @@ class Xception(nn.Module):
             out_chs=exit_stack_chs,
             dilation=stride_manager.dilation,
             dropout=self.dropout)
-        self.low_level_channels=stride_manager.low_level_channels
+        self.low_level_channels=stride_manager.channels()
+        self.scale_factors=stride_manager.scale_factors
         if nb_classes:
             classifier_config['nb_classes']=nb_classes
             classifier_config['in_ch']=exit_stack_chs[-1]

@@ -58,11 +58,11 @@ class DeeplabV3plus(nn.Module):
     XCEPTION='xception'
     RESNET='resnet'
     UPMODE='bilinear'
-    LOW_LEVEL_OUTPUT='half'
+    NB_STEPS=2
     NOT_IMPLEMENTED="Currently only supports 'xception' and 'resnet' backbone"
 
     """TODO
-    - bb_out
+    - StrideManger LLO now has steps. need to fix dlv3+ res/xcept to use
     - fix out_chs 
     """
     def __init__(self,
@@ -72,12 +72,13 @@ class DeeplabV3plus(nn.Module):
             backbone=XCEPTION,
             backbone_config={
                 'output_stride': 16,
-                'low_level_output': LOW_LEVEL_OUTPUT
+                'stride_states': [4]
             },
             backbone_low_level_out_chs=None,
             backbone_scale_factors=None,
             backbone_out_ch=None,
-            reduced_low_level_out_chs=[128],
+            reduced_low_level_out_chs=None,
+            reducer_ch_reduction=0.5,
             aspp_out_ch=256,
             aspp_config={},
             dropout=None,
@@ -91,20 +92,22 @@ class DeeplabV3plus(nn.Module):
         if dropout is not None:
             backbone_config['dropout']=dropout
             aspp_config['dropout']=dropout
-        self.backbone,bb_out_ch,self.low_level_out_chs,self.scale_factors=self._backbone(
+        self._setup_backbone(
             backbone,
             in_ch,
             backbone_config,
             backbone_out_ch,
             backbone_low_level_out_chs,
             backbone_scale_factors)
-        self.aspp=blocks.ASPP(in_ch=bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
-        reduced_low_level_out_chs=reduced_low_level_out_chs[::-1]
-        self.reducers=self._reducers(reduced_low_level_out_chs)
+        self.aspp=blocks.ASPP(in_ch=self.bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
+        reducer_chs=self._reducer_chs(reduced_low_level_out_chs,reducer_ch_reduction)
+        print('llch,r',self.low_level_out_chs,reducer_ch_reduction)
+        print('rch',reducer_chs)
+        self.reducers=self._reducers(reducer_chs)
         self.refinement_convs=self._refinement_convs(
             aspp_out_ch,
             self.low_level_out_chs,
-            reduced_low_level_out_chs,
+            reducer_chs,
             out_ch,
             out_chs,
             dropout,
@@ -114,21 +117,38 @@ class DeeplabV3plus(nn.Module):
 
             
     def forward(self,x):
+        print('='*100)
+        print('in',x.shape)
         x,lowxs=self.backbone(x)
+        print('bb',x.shape,len(lowxs))
         x=self.aspp(x)
+        print(
+            len(lowxs),
+            len(self.low_level_out_chs),
+            len(self.reducers),
+            len(self.scale_factors[:-1]),
+            len(self.refinement_convs),
+        )
         for lx,ch,red,sf,ref in zip(
                 lowxs,
                 self.low_level_out_chs,
                 self.reducers,
                 self.scale_factors[:-1],
                 self.refinement_convs):
+            print('-------')
+            print('\txlx-in',x.shape,lx.shape)
+            print('\tch,sf',ch,sf)            
             x=self._up(x,scale_factor=sf)
             lx=red(lx)
+            print('\txlx-upred',x.shape,lx.shape)
             x=torch.cat([x,lx],dim=1)
+            print('\tcat',x.shape)
             if ref:
                 x=ref(x)
+                print('\tref',x.shape)
         if self.scale_factors[-1]>1:
             x=self._up(x,scale_factor=self.scale_factors[-1])
+            print('up',x.shape)
         if self.act:
             x=self.act(x)
         return x
@@ -138,7 +158,7 @@ class DeeplabV3plus(nn.Module):
     #
     # INTERNAL
     #
-    def _backbone(self,
+    def _setup_backbone(self,
             backbone,
             in_ch,
             backbone_config,
@@ -146,27 +166,37 @@ class DeeplabV3plus(nn.Module):
             low_level_out_chs,
             scale_factors):
         if backbone==DeeplabV3plus.XCEPTION:
-            backbone=Xception(in_ch=in_ch,**backbone_config)
+            self.backbone=Xception(in_ch=in_ch,**backbone_config)
         elif backbone==DeeplabV3plus.RESNET:
-            backbone=Resnet(in_ch=in_ch,**backbone_config)
+            self.backbone=Resnet(in_ch=in_ch,**backbone_config)
         elif not isinstance(backbone,nn.Module):
-            backbone=None
-        if backbone:
-            out_ch=out_ch or backbone.out_ch
-            low_level_out_chs=low_level_out_chs or backbone.low_level_channels
-            scale_factors=scale_factors or backbone.scale_factors
-            return backbone, out_ch, low_level_out_chs, scale_factors
+            self.backbone=None
+        if self.backbone:
+            self.bb_out_ch=out_ch or self.backbone.out_ch
+            self.low_level_out_chs=low_level_out_chs or self.backbone.low_level_channels
+            self.scale_factors=scale_factors or self.backbone.scale_factors
         else:
             raise NotImplementedError(NOT_IMPLEMENTED)
 
 
-    def _reducers(self,reduced_low_level_out_chs):
+    def _reducer_chs(self,reducer_chs,reduction):
+        if reducer_chs:
+            reducer_chs=reducer_chs[::-1]
+        else:
+            reducer_chs=[int(reduction*ch) for ch in self.low_level_out_chs]
+        return reducer_chs
+
+
+    def _reducers(self,reducer_chs):
         reducers=[]
-        for in_ch,out_ch in zip(self.low_level_out_chs,reduced_low_level_out_chs):
-            reducers.append(nn.Conv2d(
-                in_channels=in_ch,
-                out_channels=out_ch,
-                kernel_size=1))
+        for in_ch,out_ch in zip(self.low_level_out_chs,reducer_chs):
+            if in_ch==out_ch:
+                reducers.append(nn.Identity())
+            else:
+                reducers.append(nn.Conv2d(
+                    in_channels=in_ch,
+                    out_channels=out_ch,
+                    kernel_size=1))
         return nn.ModuleList(reducers)
 
 
