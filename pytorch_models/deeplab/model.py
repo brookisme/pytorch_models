@@ -79,6 +79,7 @@ class DeeplabV3plus(nn.Module):
             backbone_out_ch=None,
             reduced_low_level_out_chs=None,
             reducer_ch_reduction=0.5,
+            aspp=True,
             aspp_out_ch=256,
             aspp_config={},
             dropout=None,
@@ -99,11 +100,16 @@ class DeeplabV3plus(nn.Module):
             backbone_out_ch,
             backbone_low_level_out_chs,
             backbone_scale_factors)
-        self.aspp=blocks.ASPP(in_ch=self.bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
+        if aspp:
+            self.aspp=blocks.ASPP(in_ch=self.bb_out_ch,out_ch=aspp_out_ch,**aspp_config)
+            refinement_in_ch=aspp_out_ch
+        else:
+            self.aspp=False
+            refinement_in_ch=self.bb_out_ch
         reducer_chs=self._reducer_chs(reduced_low_level_out_chs,reducer_ch_reduction)
         self.reducers=self._reducers(reducer_chs)
         self.refinement_convs=self._refinement_convs(
-            aspp_out_ch,
+            refinement_in_ch,
             self.low_level_out_chs,
             reducer_chs,
             out_ch,
@@ -116,7 +122,8 @@ class DeeplabV3plus(nn.Module):
             
     def forward(self,x):
         x,lowxs=self.backbone(x)
-        x=self.aspp(x)
+        if self.aspp:
+            x=self.aspp(x)
         for lx,ch,red,sf,ref in zip(
                 lowxs,
                 self.low_level_out_chs,
