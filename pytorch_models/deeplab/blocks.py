@@ -114,16 +114,21 @@ class ASPP(nn.Module):
 
 
     def _aconv(self,kernel,dilation):
-        return blocks.Conv(
+        aconv=nn.Conv2d(
             in_channels=self.in_ch,
             out_channels=self.out_ch,
             kernel_size=kernel,
             dilation=dilation,
-            padding=blocks.Conv.SAME,
-            batch_norm=self.batch_norm,
-            act=self.relu,
-            dropout=self.dropout,
+            padding=same_padding(kernel,dilation),
             bias=self.bias)
+        layers=[aconv]
+        if self.batch_norm:
+            layers.append(nn.BatchNorm2d(self.out_ch))
+        if self.relu:
+            layers.append(nn.ReLU())
+        if self.dropout:
+            layers.append(nn.Dropout2d(p=self.dropout))
+        return nn.Sequential(*layers)
 
 
     def _pooling(self,pooling):
