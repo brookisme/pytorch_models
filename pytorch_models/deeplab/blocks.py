@@ -53,7 +53,8 @@ class ASPP(nn.Module):
     AVERAGE='avg'
     MAX='max'
     UPMODE='bilinear'
-
+    CAT='cat'
+    ADD='add'
 
     #
     # INSTANCE METHODS
@@ -69,6 +70,7 @@ class ASPP(nn.Module):
             relu=True,
             dropout=False,
             bias=None,
+            join_method=CAT,
             out_conv_config={},
             out_kernel_size=1):
         super(ASPP, self).__init__()
@@ -88,6 +90,7 @@ class ASPP(nn.Module):
         self.bias=bias
         self.pooling=self._pooling(pooling)
         self.aconv_list=self._aconv_list(kernel_sizes,dilations)
+        self.join_method=join_method
         self.out_conv=self._out_conv(out_kernel_size,out_conv_config)
 
 
@@ -96,7 +99,10 @@ class ASPP(nn.Module):
         if self.pooling:
             ones=torch.ones(stack[0].shape,requires_grad=True).to(x.device)
             stack.append(self.pooling(x)*ones)
-        x=torch.cat(stack,dim=1)
+        if self.join_method==ASPP.ADD:
+            x=torch.stack(stack).sum(dim=0)
+        else:
+            x=torch.cat(stack,dim=1)
         if self.out_conv:
             x=self.out_conv(x)
         return x

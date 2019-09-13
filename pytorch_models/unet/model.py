@@ -28,7 +28,7 @@ class UNet(nn.Module):
             up_chs=None,
             refinement_reducer=False,
             refinement_chs=False,
-            max_pool_kernel_size=3
+            max_pool_kernel_size=3,
             down={
                 'rspp': False,
                 'squeeze_excitation': False,

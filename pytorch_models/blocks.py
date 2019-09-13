@@ -191,7 +191,8 @@ class Residual(nn.Module):
     IDENTITY_SHORTCUT='identity'
     ZERO_PADDING_SHORTCUT='zero_padding'
     CONV_SHORTCUT='conv'
-
+    AUTO_SHORTCUT='auto'
+    DEFAULT_SHORTCUT=CONV_SHORTCUT
 
     #
     # PUBLIC METHODS
@@ -201,7 +202,7 @@ class Residual(nn.Module):
             out_ch=None,
             block=None,
             is_residual_block=True,
-            shortcut_method=IDENTITY_SHORTCUT,
+            shortcut_method=AUTO_SHORTCUT,
             shortcut_stride=None,
             **conv_kwargs):
         super(Residual, self).__init__()
@@ -227,7 +228,14 @@ class Residual(nn.Module):
             return self.block(x)
 
     def _set_shortcut(self,shortcut_stride):
-        if self.shortcut_method==Residual.CONV_SHORTCUT:
+        if self.shortcut_method==Residual.AUTO_SHORTCUT:
+            if self.in_ch==self.out_ch:
+                shortcut_method=Residual.IDENTITY_SHORTCUT
+            else:
+                shortcut_method=Residual.DEFAULT_SHORTCUT
+        else:
+            shortcut_method=self.shortcut_method
+        if shortcut_method==Residual.CONV_SHORTCUT:
             self.shortcut=nn.Conv2d(
                 self.in_ch, 
                 self.out_ch, 
@@ -235,7 +243,7 @@ class Residual(nn.Module):
                 stride=shortcut_stride or 2, 
                 bias=False)
             self.zero_pad=False
-        elif self.shortcut_method==Residual.ZERO_PADDING_SHORTCUT:
+        elif shortcut_method==Residual.ZERO_PADDING_SHORTCUT:
             self.zero_pad=self.out_ch-self.in_ch
             self.shortcut=StridedIdentity(self.out_ch,shortcut_stride or 2)
         else:
