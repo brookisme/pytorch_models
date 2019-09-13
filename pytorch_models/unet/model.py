@@ -124,20 +124,24 @@ class UNet(nn.Module):
             blocks.append(RSPP(in_ch,out_ch,**config))
         else:
             if down_method:
-                config['shortcut_stride']=2            
                 if down_method==UNet.STRIDE:
-                    config['stride']=2
+                    config['shortcut_stride']=2        
+                    config['strides']=self._strides(config.get('depth'))
                 elif down_method==UNet.MAX_POOL:
+                    config['shortcut_stride']=1    
                     blocks.append(self._max_pooling())
                 else:
                     raise ValueError('down_method values: stride, max_pool, False|None')
             else:
-                config['shortcut_stride']=1       
+                config['shortcut_stride']=1
             blocks.append(Residual(in_ch,out_ch,**config))            
         if squeeze_excitation:
             blocks.append(SqueezeExcitation(out_ch))
         return nn.Sequential(*blocks)
 
+    def _strides(self,depth):
+        if depth:
+            return [2]+[1]*(depth-1)
 
     def _max_pooling(self):
         return nn.MaxPool2d(
