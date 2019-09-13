@@ -71,7 +71,11 @@ class UNet(nn.Module):
         if not up_chs:
             up_chs=[self.down_chs[i] for i in skip_indices[::-1]]
         self.up_chs=up_chs
-        self.up_blocks=self._up_blocks(self.down_chs[-1],up)
+        self.up_blocks=self._up_blocks(
+            self.down_chs[-1],
+            refinement_reducer,
+            refinement_chs,
+            up)
         self.upsample_mode=upsample_mode
         self.refinements=self._refinements(refinement_reducer,refinement_chs)
         self.out_block=self._building_block(self.up_chs[-1],out_ch,config=out)
@@ -126,10 +130,13 @@ class UNet(nn.Module):
         return nn.ModuleList(blocks)
 
 
-    def _up_blocks(self,in_ch,config):
+    def _up_blocks(self,in_ch,reducer,rfine_chs,config):
         blocks=[]
-        for out_ch in self.up_chs:
-            blocks.append(self._building_block(in_ch+out_ch,out_ch,config))
+        if not rfine_chs:
+            if not reducer: reducer=1
+            rfine_chs=[int(reducer*self.down_chs[i]) for i in self.skip_indices[::-1]]
+        for rfine_ch,out_ch in zip(rfine_chs,self.up_chs):
+            blocks.append(self._building_block(rfine_ch+in_ch,out_ch,config))
             in_ch=out_ch
         return nn.ModuleList(blocks)
 
@@ -162,17 +169,16 @@ class UNet(nn.Module):
 
 
     def _refinements(self,reducer,out_chs):
+        in_chs=[self.down_chs[i] for i in self.skip_indices[::-1]]
         if (not out_chs) and isinstance(reducer,float):
-            out_chs=[reducer*self.down_chs[i] for i in self.skip_indices[::-1]]
+            out_chs=[int(reducer*self.down_chs[i]) for i in self.skip_indices[::-1]]
         if out_chs:
             refinements=[]
-            in_ch=self.down_chs[-1]
-            for out_ch in out_chs:
+            for in_ch,out_ch in zip(in_chs,out_chs):
                 refinements.append(nn.Conv2d(
                         in_channels=in_ch,
                         out_channels=out_ch,
                         kernel_size=1))
-                in_ch=out_ch
         else:
             refinements=[False]*len(self.skip_indices)
         return refinements
