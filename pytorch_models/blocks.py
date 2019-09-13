@@ -67,6 +67,7 @@ class Conv(nn.Module):
             depth=1, 
             kernel_size=3, 
             kernel_sizes=None,
+            bias=None,
             stride=1,
             strides=None,
             dilation=1,
@@ -97,6 +98,7 @@ class Conv(nn.Module):
             in_ch,
             out_chs,
             kernel_sizes,
+            bias,
             strides,
             dilation,
             batch_norm,
@@ -117,6 +119,7 @@ class Conv(nn.Module):
             in_ch,
             out_chs,
             kernel_sizes,
+            bias,
             strides,
             dilation,
             batch_norm,
@@ -124,6 +127,8 @@ class Conv(nn.Module):
             act,
             act_config):
         layers=[]
+        if bias is None:
+            bias=(not batch_norm)
         for ch,k,s in zip(out_chs,kernel_sizes,strides):
             layers.append(
                 nn.Conv2d(
@@ -133,7 +138,7 @@ class Conv(nn.Module):
                     stride=s,
                     padding=self._padding(k,dilation),
                     dilation=dilation,
-                    bias=(not batch_norm)))
+                    bias=bias))
             if batch_norm:
                 layers.append(nn.BatchNorm2d(ch))
             if act:
@@ -226,6 +231,7 @@ class Residual(nn.Module):
             return self.shortcut(self._zpad(x)).add(self.block(x))
         else:
             return self.block(x)
+
 
     def _set_shortcut(self,shortcut_stride):
         if self.shortcut_method==Residual.AUTO_SHORTCUT:
@@ -422,5 +428,39 @@ class StridedIdentity(nn.Module):
             p.requires_grad=False
             p.data.copy_(torch.ones_like(p))
 
+
+
+
+class SqueezeExcitation(nn.Module):
+    r""" Squeeze and Excitation Block
+    Args:
+        nb_ch<int>: Number of Channels in input image
+        reduction<int>: Amount to squeeze by
+        warn<bool>: Print Warning if nb_ch < reduction
+    Links:
+        https://arxiv.org/abs/1709.01507
+    """
+    def __init__(self, nb_ch, reduction=16, warn=True):
+        super(SqueezeExcitation, self).__init__()
+        self.nb_ch=nb_ch
+        self.avg_pool=nn.AdaptiveAvgPool2d(1)
+        self.reduction_ch=nb_ch//reduction
+        if self.reduction_ch:
+            self.squeeze=nn.Sequential(
+                    nn.Linear(nb_ch,self.reduction_ch),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(self.reduction_ch, nb_ch),
+                    nn.Sigmoid())
+        elif warn:
+            print('[WARNING] SqueezeExcitation skipped. nb_ch < reduction')
+
+        
+    def forward(self, x):
+        if self.reduction_ch:
+            y = self.avg_pool(x).view(-1,self.nb_ch)
+            y = self.squeeze(y).view(-1,self.nb_ch,1,1)
+            return x * y
+        else:
+            return x
 
 
