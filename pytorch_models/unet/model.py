@@ -78,23 +78,44 @@ class UNet(nn.Module):
         self.act=output_activation(out_activation,out_activation_config)
 
 
-    def _refinements(self,reducer,out_chs):
-        if (not out_chs) and isinstance(reducer,float):
-            out_chs=[reducer*self.down_chs[i] for i in self.skip_indices[::-1]]
-        if out_chs:
-            refinements=[]
-            in_ch=self.down_chs[-1]
-            for out_ch in out_chs:
-                refinements.append(nn.Conv2d(
-                        in_channels=in_ch,
-                        out_channels=out_ch,
-                        kernel_size=1))
-                in_ch=out_ch
-        else:
-            refinements=[False]*len(self.skip_indices)
-        return refinements
+    def forward(self,x):
+        skips=[]
+        stride_states=[]
+        current_stride_state=1
+        for i,block in enumerate(self.down_blocks):
+            x=block(x)
+            if i: current_stride_state*=2
+            if i in self.skip_indices:
+                skips.append(x)
+                stride_states.append(current_stride_state)
+        if self.bottleneck:
+            x=self.bottleneck(x)
+        skips.reverse()
+        stride_states.reverse()
+        for skip,stride_state,rfine,ublock in zip(
+                skips,
+                stride_states,
+                self.refinements,
+                self.up_blocks):
+            up_factor=current_stride_state/stride_state
+            x=self._up(x,up_factor)
+            if rfine:
+                skip=rfine(skip)
+            x=torch.cat([x,skip],dim=1)
+            x=ublock(x)
+            current_stride_state=stride_state
+        if  current_stride_state!=1:           
+            up_factor=current_stride_state/stride_state
+            x=self._up(x,up_factor)
+        x=self.out_block(x)
+        if self.act:
+            x=self.act(x)
+        return x
 
 
+    #
+    # INTERNAL
+    #
     def _down_blocks(self,in_ch,config,down_method):
         blocks=[]
         blocks.append(self._building_block(in_ch,self.down_chs[0],config))
@@ -139,9 +160,28 @@ class UNet(nn.Module):
             blocks.append(SqueezeExcitation(out_ch))
         return nn.Sequential(*blocks)
 
+
+    def _refinements(self,reducer,out_chs):
+        if (not out_chs) and isinstance(reducer,float):
+            out_chs=[reducer*self.down_chs[i] for i in self.skip_indices[::-1]]
+        if out_chs:
+            refinements=[]
+            in_ch=self.down_chs[-1]
+            for out_ch in out_chs:
+                refinements.append(nn.Conv2d(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        kernel_size=1))
+                in_ch=out_ch
+        else:
+            refinements=[False]*len(self.skip_indices)
+        return refinements
+
+
     def _strides(self,depth):
         if depth:
             return [2]+[1]*(depth-1)
+
 
     def _max_pooling(self):
         return nn.MaxPool2d(
@@ -156,47 +196,3 @@ class UNet(nn.Module):
                 scale_factor=scale_factor, 
                 mode=self.upsample_mode, 
                 align_corners=True)
-
-
-    def forward(self,x):
-        skips=[]
-        stride_states=[]
-        current_stride_state=1
-        
-        for i,block in enumerate(self.down_blocks):
-            x=block(x)
-            if i: current_stride_state*=2
-            if i in self.skip_indices:
-                skips.append(x)
-                stride_states.append(current_stride_state)
-
-        if self.bottleneck:
-            x=self.bottleneck(x)
-
-        skips.reverse()
-        stride_states.reverse()
-
-        for skip,stride_state,rfine,ublock in zip(
-                skips,
-                stride_states,
-                self.refinements,
-                self.up_blocks):
-            up_factor=current_stride_state/stride_state
-            x=self._up(x,up_factor)
-            if rfine:
-                skip=rfine(skip)
-            x=torch.cat([x,skip],dim=1)
-            x=ublock(x)
-            current_stride_state=stride_state
-
-        if  current_stride_state!=1:           
-            up_factor=current_stride_state/stride_state
-            x=self._up(x,up_factor)
-
-        x=self.out_block(x)
-
-        if self.act:
-            x=self.act(x)
-
-        return x
-
