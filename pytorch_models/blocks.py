@@ -171,6 +171,9 @@ class Residual(nn.Module):
         block<nn.Module|None>:
             - inner block for residual block
             - if None uses Conv through conv_kwargs
+        is_residual_block<bool>:
+            - if False just return the block without residual
+            - for use in architectures where the skip connection is optional
         shortcut_method<None|str>
             - method for managing shortcuts with increasing dimensions. options:
             - Residual.IDENTITY_SHORTCUT | None: use identity
@@ -197,26 +200,31 @@ class Residual(nn.Module):
             in_ch=None,
             out_ch=None,
             block=None,
+            is_residual_block=True,
             shortcut_method=IDENTITY_SHORTCUT,
             shortcut_stride=None,
             **conv_kwargs):
         super(Residual, self).__init__()
         if not block:
             block=Conv(in_ch=in_ch,out_ch=out_ch,**conv_kwargs)
-        self.block=block
+        self.block=block            
         if not in_ch:
             in_ch=block.in_ch
         if not out_ch:
             out_ch=block.out_ch
         self.in_ch=in_ch
         self.out_ch=out_ch
-        self.shortcut_method=shortcut_method
-        self._set_shortcut(shortcut_stride)
+        self.is_residual_block=is_residual_block
+        if is_residual_block:
+            self.shortcut_method=shortcut_method
+            self._set_shortcut(shortcut_stride)
 
 
     def forward(self, x):
-        return self.shortcut(self._zpad(x)).add(self.block(x))
-
+        if self.is_residual_block:
+            return self.shortcut(self._zpad(x)).add(self.block(x))
+        else:
+            return self.block(x)
 
     def _set_shortcut(self,shortcut_stride):
         if self.shortcut_method==Residual.CONV_SHORTCUT:
@@ -405,7 +413,6 @@ class StridedIdentity(nn.Module):
         for p in ident.parameters():
             p.requires_grad=False
             p.data.copy_(torch.ones_like(p))
-
 
 
 
