@@ -12,6 +12,7 @@ UNET_BLOCK_CONFIG={
     'depth': 2,
     'is_residual_block': False,
 }
+DEFAULT_DEPTH=2
 
 class UNet(nn.Module):
     """ (Modified) UNet
@@ -65,7 +66,7 @@ class UNet(nn.Module):
             self.bottleneck=False
         if skip_indices is None:
             skip_indices=list(range(len(self.down_chs)-1))
-        if skip_indices: 
+        if skip_indices:
             skip_indices.sort()
         self.skip_indices=skip_indices
         if not up_chs:
@@ -101,6 +102,7 @@ class UNet(nn.Module):
                 stride_states,
                 self.refinements,
                 self.up_blocks):
+
             up_factor=current_stride_state/stride_state
             x=self._up(x,up_factor)
             if rfine:
@@ -154,7 +156,7 @@ class UNet(nn.Module):
             if down_method:
                 if down_method==UNet.STRIDE:
                     config['shortcut_stride']=2        
-                    config['strides']=self._strides(config.get('depth'))
+                    config['strides']=self._strides(config.get('depth',DEFAULT_DEPTH))
                 elif down_method==UNet.MAX_POOL:
                     config['shortcut_stride']=1    
                     blocks.append(self._max_pooling())
