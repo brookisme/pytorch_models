@@ -148,6 +148,8 @@ class UNet(nn.Module):
         config=config.copy()
         rspp=config.pop('rspp',False)
         squeeze_excitation=config.pop('squeeze_excitation',False)
+        if not out_ch:
+            out_ch=in_ch
         if rspp:
             if down_method:
                 blocks.append(self._max_pooling())
