@@ -70,10 +70,6 @@ class DeeplabV3plus(nn.Module):
     AFTER_UP='after'
 
 
-    """TODO
-    - StrideManger LLO now has steps. need to fix dlv3+ res/xcept to use
-    - fix out_chs 
-    """
     def __init__(self,
             in_ch,
             out_ch,
@@ -128,7 +124,8 @@ class DeeplabV3plus(nn.Module):
             refinement_conv_depth,
             refinement_conv_config)
         self.classifier_position=classifier_position
-        self.classifier=self._classifier(up_chs[-1],out_ch,classifier_depth,classifier_config)
+        self.preclassification_chs=up_chs[-1]
+        self.classifier=self.get_classifier(out_ch,classifier_depth,classifier_config)
         self.act=output_activation(out_activation,out_activation_config)
 
             
@@ -157,6 +154,17 @@ class DeeplabV3plus(nn.Module):
             x=self.act(x)
         return x
 
+
+    #
+    # HELPERS
+    #
+    def get_classifier(self,out_ch,depth=1,config={}):
+        """ 
+        - simple wrapper for pytorch_models.blocks.Conv
+        - useful for transfer-learning
+        """
+        config['depth']=config.get('depth',depth)
+        return Conv(in_ch=self.preclassification_chs,out_ch=out_ch,**config)
 
 
     #
@@ -237,11 +245,6 @@ class DeeplabV3plus(nn.Module):
             else:
                 refiners.append(False)
         return nn.ModuleList(refiners)
-
-
-    def _classifier(self,in_ch,out_ch,depth,config):
-        config['depth']=config.get('depth',depth)
-        return Conv(in_ch=in_ch,out_ch=out_ch,**config)
 
 
     def _up(self,x,scale_factor=4):
