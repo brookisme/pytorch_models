@@ -63,6 +63,7 @@ class Xception(nn.Module):
             exit_xblock_ch=1024,
             exit_stack_chs=[1536,1536,2048],
             xblock_depth=3,
+            xblock_maxpool=False,
             dropout=False,
             nb_classes=None,
             classifier='gap',
@@ -78,7 +79,8 @@ class Xception(nn.Module):
         self.xblocks=self._xblocks(
             entry_out_ch,
             xblock_chs,
-            xblock_depth)
+            xblock_depth,
+            xblock_maxpool)
         self.bottleneck=blocks.SeparableStack(
             in_ch=xblock_chs[-1],
             depth=bottleneck_depth,
@@ -89,6 +91,7 @@ class Xception(nn.Module):
                 in_ch=xblock_chs[-1],
                 out_ch=exit_xblock_ch,
                 depth=xblock_depth,
+                maxpool=xblock_maxpool,
                 dilation=self.stride_manager.dilation,
                 dropout=self.dropout)
         self.stride_manager.update(
@@ -138,7 +141,7 @@ class Xception(nn.Module):
     #
     # INTERNAL
     #
-    def _xblocks(self,in_ch,out_ch_list,depth):
+    def _xblocks(self,in_ch,out_ch_list,depth,maxpool):
         layers=[]
         for i,ch in enumerate(out_ch_list):
             block=blocks.XBlock(
@@ -146,7 +149,8 @@ class Xception(nn.Module):
                 out_ch=ch,
                 depth=depth,
                 dilation=self.stride_manager.dilation,
-                dropout=self.dropout
+                dropout=self.dropout,
+                maxpool=maxpool
             )
             layers.append(block)
             tag="{}_{}".format(Xception.LOW_LEVEL_XBLOCK,i)

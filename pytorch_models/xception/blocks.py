@@ -384,12 +384,10 @@ class XBlock(nn.Module):
     #
     def _reduction_layer(self,ch,maxpool,dilation):
         if maxpool:
-            if stride==1:
-                pool_padding=1
-            else:
-                pool_padding=0
+            kernel_size=2
+            pool_padding=same_padding(kernel_size,dilation)
             return nn.MaxPool2d(
-                kernel_size=3, 
+                kernel_size=kernel_size, 
                 stride=self.output_stride,
                 dilation=dilation,
                 padding=pool_padding)
