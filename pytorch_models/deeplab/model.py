@@ -164,7 +164,11 @@ class DeeplabV3plus(nn.Module):
         - useful for transfer-learning
         """
         config['depth']=config.get('depth',depth)
-        return Conv(in_ch=self.preclassification_chs,out_ch=out_ch,**config)
+        return Conv(
+            in_ch=self.preclassification_chs,
+            out_ch=out_ch,
+            act=False,
+            **config)
 
 
     #
